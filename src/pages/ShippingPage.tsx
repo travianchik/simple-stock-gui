@@ -87,6 +87,7 @@ const ShippingPage = () => {
   const [tab, setTab] = useState("available");
   const [search, setSearch] = useState("");
   const [brandFilter, setBrandFilter] = useState("all");
+  const [marketplaceFilter, setMarketplaceFilter] = useState("all");
 
   // Shipping mode
   const [shippingMode, setShippingMode] = useState(false);
