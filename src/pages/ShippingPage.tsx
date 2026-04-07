@@ -144,16 +144,20 @@ const ShippingPage = () => {
   );
 
   const handleScanUpd = (id: number) => {
+    const upd = activeUpds.find((u) => u.id === id);
+    if (!upd || upd.marketplace !== selectedDest) return;
     setScannedIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
   };
 
   const handleBarcodeScan = () => {
     if (!scanInput.trim()) return;
     const found = activeUpds.find(
-      (u) => u.barcode === scanInput.trim() || u.upd.toLowerCase() === scanInput.trim().toLowerCase()
+      (u) =>
+        (u.barcode === scanInput.trim() || u.upd.toLowerCase() === scanInput.trim().toLowerCase()) &&
+        u.marketplace === selectedDest
     );
     if (found && !scannedIds.includes(found.id)) {
-      handleScanUpd(found.id);
+      setScannedIds((prev) => [...prev, found.id]);
     }
     setScanInput("");
   };
