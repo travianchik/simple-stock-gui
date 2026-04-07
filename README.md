@@ -1,3 +1,6 @@
-# Welcome to your Lovable project
+Как запустить локально:
 
-TODO: Document your project here
+Сначала запускаем - npm install
+Потом - npm run dev
+
+Порт можно указать в vite.config
