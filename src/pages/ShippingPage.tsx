@@ -306,7 +306,7 @@ const ShippingPage = () => {
               <div className="flex items-center gap-3 p-4 rounded-lg border border-primary/30 bg-primary/5">
                 <Package className="w-5 h-5 text-primary" />
                 <span className="text-sm font-medium">Формирование паллеты</span>
-                <Select value={selectedDest} onValueChange={setSelectedDest}>
+                <Select value={selectedDest} onValueChange={setSelectedDest} disabled={scannedIds.length > 0}>
                   <SelectTrigger className="w-[180px]">
                     <SelectValue />
                   </SelectTrigger>
