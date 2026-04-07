@@ -271,12 +271,23 @@ const ShippingPage = () => {
               <div className="relative max-w-xs flex-1 min-w-[200px]">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input
-                  placeholder="Поиск по УПД, заказу, ШК..."
+                  placeholder="Поиск по УПД, заказу, ШК, маркетплейсу..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   className="pl-9"
                 />
               </div>
+              <Select value={marketplaceFilter} onValueChange={setMarketplaceFilter}>
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="Маркетплейс" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Все маркетплейсы</SelectItem>
+                  {destinations.map((d) => (
+                    <SelectItem key={d} value={d}>{d}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <Select value={brandFilter} onValueChange={setBrandFilter}>
                 <SelectTrigger className="w-[180px]">
                   <SelectValue placeholder="Бренд" />
