@@ -129,11 +129,13 @@ const ShippingPage = () => {
         const matchSearch =
           u.upd.toLowerCase().includes(search.toLowerCase()) ||
           u.order.toLowerCase().includes(search.toLowerCase()) ||
-          u.barcode.includes(search);
+          u.barcode.includes(search) ||
+          u.marketplace.toLowerCase().includes(search.toLowerCase());
         const matchBrand = brandFilter === "all" || u.brand === brandFilter;
-        return matchSearch && matchBrand;
+        const matchMp = marketplaceFilter === "all" || u.marketplace === marketplaceFilter;
+        return matchSearch && matchBrand && matchMp;
       }),
-    [activeUpds, search, brandFilter]
+    [activeUpds, search, brandFilter, marketplaceFilter]
   );
 
   const scannedUpds = useMemo(
