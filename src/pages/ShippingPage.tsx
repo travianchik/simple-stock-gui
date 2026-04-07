@@ -41,7 +41,7 @@ interface Shipment {
 
 const availableUpds: UPDItem[] = [
   {
-    id: 1, upd: "УПД-00142", order: "ORD-2041", items: 120, brand: "BasicWear", barcode: "4607012345671",
+    id: 1, upd: "УПД-00142", order: "ORD-2041", items: 120, brand: "BasicWear", barcode: "4607012345671", marketplace: "Wildberries",
     contents: [
       { article: "FB-001-S", name: "Футболка белая S", qty: 40 },
       { article: "FB-001-M", name: "Футболка белая M", qty: 50 },
@@ -49,7 +49,7 @@ const availableUpds: UPDItem[] = [
     ],
   },
   {
-    id: 2, upd: "УПД-00143", order: "ORD-2041", items: 80, brand: "DenimPro", barcode: "4607012345672",
+    id: 2, upd: "УПД-00143", order: "ORD-2041", items: 80, brand: "DenimPro", barcode: "4607012345672", marketplace: "OZON",
     contents: [
       { article: "JS-045-30", name: "Джинсы slim 30", qty: 30 },
       { article: "JS-045-32", name: "Джинсы slim 32", qty: 30 },
@@ -57,7 +57,7 @@ const availableUpds: UPDItem[] = [
     ],
   },
   {
-    id: 3, upd: "УПД-00144", order: "ORD-2042", items: 45, brand: "RunStyle", barcode: "4607012345673",
+    id: 3, upd: "УПД-00144", order: "ORD-2042", items: 45, brand: "RunStyle", barcode: "4607012345673", marketplace: "Wildberries",
     contents: [
       { article: "KS-112-41", name: "Кроссовки 41", qty: 15 },
       { article: "KS-112-42", name: "Кроссовки 42", qty: 15 },
@@ -65,7 +65,7 @@ const availableUpds: UPDItem[] = [
     ],
   },
   {
-    id: 4, upd: "УПД-00145", order: "ORD-2044", items: 200, brand: "BasicWear", barcode: "4607012345674",
+    id: 4, upd: "УПД-00145", order: "ORD-2044", items: 200, brand: "BasicWear", barcode: "4607012345674", marketplace: "Яндекс Маркет",
     contents: [
       { article: "HO-023-S", name: "Худи оверсайз S", qty: 60 },
       { article: "HO-023-M", name: "Худи оверсайз M", qty: 80 },
@@ -73,7 +73,7 @@ const availableUpds: UPDItem[] = [
     ],
   },
   {
-    id: 5, upd: "УПД-00146", order: "ORD-2042", items: 60, brand: "UrbanBag", barcode: "4607012345675",
+    id: 5, upd: "УПД-00146", order: "ORD-2042", items: 60, brand: "UrbanBag", barcode: "4607012345675", marketplace: "OZON",
     contents: [
       { article: "RG-008-BK", name: "Рюкзак чёрный", qty: 30 },
       { article: "RG-008-GR", name: "Рюкзак серый", qty: 30 },
