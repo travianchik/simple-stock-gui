@@ -358,6 +358,7 @@ const ShippingPage = () => {
                   <TableRow className="bg-muted/50">
                     <TableHead className="text-xs font-medium">УПД</TableHead>
                     <TableHead className="text-xs font-medium">Заказ</TableHead>
+                    <TableHead className="text-xs font-medium">Маркетплейс</TableHead>
                     <TableHead className="text-xs font-medium">Бренд</TableHead>
                     <TableHead className="text-xs font-medium">Штрих-код</TableHead>
                     <TableHead className="text-xs font-medium text-right">Товаров</TableHead>
@@ -368,8 +369,9 @@ const ShippingPage = () => {
                 <TableBody>
                   {filteredUpds.map((u) => {
                     const scanned = scannedIds.includes(u.id);
+                    const wrongMp = shippingMode && u.marketplace !== selectedDest;
                     return (
-                      <TableRow key={u.id} className={scanned ? "bg-success/5" : ""}>
+                      <TableRow key={u.id} className={scanned ? "bg-success/5" : wrongMp ? "opacity-40" : ""}>
                         <TableCell>
                           <button
                             onClick={() => setUpdDialog(u)}
@@ -380,6 +382,7 @@ const ShippingPage = () => {
                           </button>
                         </TableCell>
                         <TableCell className="text-sm text-muted-foreground">{u.order}</TableCell>
+                        <TableCell className="text-sm">{u.marketplace}</TableCell>
                         <TableCell className="text-sm">{u.brand}</TableCell>
                         <TableCell className="text-sm font-mono text-muted-foreground">{u.barcode}</TableCell>
                         <TableCell className="text-sm text-right font-medium">{u.items}</TableCell>
@@ -392,7 +395,7 @@ const ShippingPage = () => {
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-1">
-                            {shippingMode && !scanned && (
+                            {shippingMode && !scanned && !wrongMp && (
                               <Button variant="ghost" size="sm" onClick={() => handleScanUpd(u.id)} title="Сканировать">
                                 <ScanLine className="w-4 h-4" />
                               </Button>
@@ -407,7 +410,7 @@ const ShippingPage = () => {
                   })}
                   {filteredUpds.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                      <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
                         {activeUpds.length === 0 ? "Все УПД отгружены" : "Ничего не найдено"}
                       </TableCell>
                     </TableRow>
