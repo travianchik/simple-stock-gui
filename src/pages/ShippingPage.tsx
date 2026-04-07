@@ -25,6 +25,7 @@ interface UPDItem {
   items: number;
   brand: string;
   barcode: string;
+  marketplace: string;
   contents: { article: string; name: string; qty: number }[];
 }
 
