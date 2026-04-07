@@ -25,6 +25,7 @@ interface UPDItem {
   items: number;
   brand: string;
   barcode: string;
+  marketplace: string;
   contents: { article: string; name: string; qty: number }[];
 }
 
@@ -40,7 +41,7 @@ interface Shipment {
 
 const availableUpds: UPDItem[] = [
   {
-    id: 1, upd: "УПД-00142", order: "ORD-2041", items: 120, brand: "BasicWear", barcode: "4607012345671",
+    id: 1, upd: "УПД-00142", order: "ORD-2041", items: 120, brand: "BasicWear", barcode: "4607012345671", marketplace: "Wildberries",
     contents: [
       { article: "FB-001-S", name: "Футболка белая S", qty: 40 },
       { article: "FB-001-M", name: "Футболка белая M", qty: 50 },
@@ -48,7 +49,7 @@ const availableUpds: UPDItem[] = [
     ],
   },
   {
-    id: 2, upd: "УПД-00143", order: "ORD-2041", items: 80, brand: "DenimPro", barcode: "4607012345672",
+    id: 2, upd: "УПД-00143", order: "ORD-2041", items: 80, brand: "DenimPro", barcode: "4607012345672", marketplace: "OZON",
     contents: [
       { article: "JS-045-30", name: "Джинсы slim 30", qty: 30 },
       { article: "JS-045-32", name: "Джинсы slim 32", qty: 30 },
@@ -56,7 +57,7 @@ const availableUpds: UPDItem[] = [
     ],
   },
   {
-    id: 3, upd: "УПД-00144", order: "ORD-2042", items: 45, brand: "RunStyle", barcode: "4607012345673",
+    id: 3, upd: "УПД-00144", order: "ORD-2042", items: 45, brand: "RunStyle", barcode: "4607012345673", marketplace: "Wildberries",
     contents: [
       { article: "KS-112-41", name: "Кроссовки 41", qty: 15 },
       { article: "KS-112-42", name: "Кроссовки 42", qty: 15 },
@@ -64,7 +65,7 @@ const availableUpds: UPDItem[] = [
     ],
   },
   {
-    id: 4, upd: "УПД-00145", order: "ORD-2044", items: 200, brand: "BasicWear", barcode: "4607012345674",
+    id: 4, upd: "УПД-00145", order: "ORD-2044", items: 200, brand: "BasicWear", barcode: "4607012345674", marketplace: "Яндекс Маркет",
     contents: [
       { article: "HO-023-S", name: "Худи оверсайз S", qty: 60 },
       { article: "HO-023-M", name: "Худи оверсайз M", qty: 80 },
@@ -72,7 +73,7 @@ const availableUpds: UPDItem[] = [
     ],
   },
   {
-    id: 5, upd: "УПД-00146", order: "ORD-2042", items: 60, brand: "UrbanBag", barcode: "4607012345675",
+    id: 5, upd: "УПД-00146", order: "ORD-2042", items: 60, brand: "UrbanBag", barcode: "4607012345675", marketplace: "OZON",
     contents: [
       { article: "RG-008-BK", name: "Рюкзак чёрный", qty: 30 },
       { article: "RG-008-GR", name: "Рюкзак серый", qty: 30 },
@@ -86,6 +87,7 @@ const ShippingPage = () => {
   const [tab, setTab] = useState("available");
   const [search, setSearch] = useState("");
   const [brandFilter, setBrandFilter] = useState("all");
+  const [marketplaceFilter, setMarketplaceFilter] = useState("all");
 
   // Shipping mode
   const [shippingMode, setShippingMode] = useState(false);
@@ -127,11 +129,13 @@ const ShippingPage = () => {
         const matchSearch =
           u.upd.toLowerCase().includes(search.toLowerCase()) ||
           u.order.toLowerCase().includes(search.toLowerCase()) ||
-          u.barcode.includes(search);
+          u.barcode.includes(search) ||
+          u.marketplace.toLowerCase().includes(search.toLowerCase());
         const matchBrand = brandFilter === "all" || u.brand === brandFilter;
-        return matchSearch && matchBrand;
+        const matchMp = marketplaceFilter === "all" || u.marketplace === marketplaceFilter;
+        return matchSearch && matchBrand && matchMp;
       }),
-    [activeUpds, search, brandFilter]
+    [activeUpds, search, brandFilter, marketplaceFilter]
   );
 
   const scannedUpds = useMemo(
@@ -140,16 +144,20 @@ const ShippingPage = () => {
   );
 
   const handleScanUpd = (id: number) => {
+    const upd = activeUpds.find((u) => u.id === id);
+    if (!upd || upd.marketplace !== selectedDest) return;
     setScannedIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
   };
 
   const handleBarcodeScan = () => {
     if (!scanInput.trim()) return;
     const found = activeUpds.find(
-      (u) => u.barcode === scanInput.trim() || u.upd.toLowerCase() === scanInput.trim().toLowerCase()
+      (u) =>
+        (u.barcode === scanInput.trim() || u.upd.toLowerCase() === scanInput.trim().toLowerCase()) &&
+        u.marketplace === selectedDest
     );
     if (found && !scannedIds.includes(found.id)) {
-      handleScanUpd(found.id);
+      setScannedIds((prev) => [...prev, found.id]);
     }
     setScanInput("");
   };
@@ -263,12 +271,23 @@ const ShippingPage = () => {
               <div className="relative max-w-xs flex-1 min-w-[200px]">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input
-                  placeholder="Поиск по УПД, заказу, ШК..."
+                  placeholder="Поиск по УПД, заказу, ШК, маркетплейсу..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   className="pl-9"
                 />
               </div>
+              <Select value={marketplaceFilter} onValueChange={setMarketplaceFilter}>
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="Маркетплейс" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Все маркетплейсы</SelectItem>
+                  {destinations.map((d) => (
+                    <SelectItem key={d} value={d}>{d}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <Select value={brandFilter} onValueChange={setBrandFilter}>
                 <SelectTrigger className="w-[180px]">
                   <SelectValue placeholder="Бренд" />
@@ -287,7 +306,7 @@ const ShippingPage = () => {
               <div className="flex items-center gap-3 p-4 rounded-lg border border-primary/30 bg-primary/5">
                 <Package className="w-5 h-5 text-primary" />
                 <span className="text-sm font-medium">Формирование паллеты</span>
-                <Select value={selectedDest} onValueChange={setSelectedDest}>
+                <Select value={selectedDest} onValueChange={setSelectedDest} disabled={scannedIds.length > 0}>
                   <SelectTrigger className="w-[180px]">
                     <SelectValue />
                   </SelectTrigger>
@@ -339,6 +358,7 @@ const ShippingPage = () => {
                   <TableRow className="bg-muted/50">
                     <TableHead className="text-xs font-medium">УПД</TableHead>
                     <TableHead className="text-xs font-medium">Заказ</TableHead>
+                    <TableHead className="text-xs font-medium">Маркетплейс</TableHead>
                     <TableHead className="text-xs font-medium">Бренд</TableHead>
                     <TableHead className="text-xs font-medium">Штрих-код</TableHead>
                     <TableHead className="text-xs font-medium text-right">Товаров</TableHead>
@@ -349,8 +369,9 @@ const ShippingPage = () => {
                 <TableBody>
                   {filteredUpds.map((u) => {
                     const scanned = scannedIds.includes(u.id);
+                    const wrongMp = shippingMode && u.marketplace !== selectedDest;
                     return (
-                      <TableRow key={u.id} className={scanned ? "bg-success/5" : ""}>
+                      <TableRow key={u.id} className={scanned ? "bg-success/5" : wrongMp ? "opacity-40" : ""}>
                         <TableCell>
                           <button
                             onClick={() => setUpdDialog(u)}
@@ -361,6 +382,7 @@ const ShippingPage = () => {
                           </button>
                         </TableCell>
                         <TableCell className="text-sm text-muted-foreground">{u.order}</TableCell>
+                        <TableCell className="text-sm">{u.marketplace}</TableCell>
                         <TableCell className="text-sm">{u.brand}</TableCell>
                         <TableCell className="text-sm font-mono text-muted-foreground">{u.barcode}</TableCell>
                         <TableCell className="text-sm text-right font-medium">{u.items}</TableCell>
@@ -373,7 +395,7 @@ const ShippingPage = () => {
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-1">
-                            {shippingMode && !scanned && (
+                            {shippingMode && !scanned && !wrongMp && (
                               <Button variant="ghost" size="sm" onClick={() => handleScanUpd(u.id)} title="Сканировать">
                                 <ScanLine className="w-4 h-4" />
                               </Button>
@@ -388,7 +410,7 @@ const ShippingPage = () => {
                   })}
                   {filteredUpds.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                      <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
                         {activeUpds.length === 0 ? "Все УПД отгружены" : "Ничего не найдено"}
                       </TableCell>
                     </TableRow>
@@ -471,6 +493,8 @@ const ShippingPage = () => {
           {updDialog && (
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-2 text-sm">
+                <div className="text-muted-foreground">Маркетплейс</div>
+                <div className="font-medium">{updDialog.marketplace}</div>
                 <div className="text-muted-foreground">Бренд</div>
                 <div className="font-medium">{updDialog.brand}</div>
                 <div className="text-muted-foreground">Заказ</div>
