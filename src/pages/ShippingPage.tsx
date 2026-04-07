@@ -493,6 +493,8 @@ const ShippingPage = () => {
           {updDialog && (
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-2 text-sm">
+                <div className="text-muted-foreground">Маркетплейс</div>
+                <div className="font-medium">{updDialog.marketplace}</div>
                 <div className="text-muted-foreground">Бренд</div>
                 <div className="font-medium">{updDialog.brand}</div>
                 <div className="text-muted-foreground">Заказ</div>
