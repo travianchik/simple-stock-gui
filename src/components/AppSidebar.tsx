@@ -9,9 +9,14 @@ import {
   ChevronLeft,
   ChevronRight,
   Warehouse,
+  UserCircle,
 } from "lucide-react";
+import { useRoles, roleLabels } from "@/contexts/RoleContext";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import StatusBadge from "@/components/StatusBadge";
+import { roleStatus } from "@/contexts/RoleContext";
 
-const navItems = [
+const allNavItems = [
   { path: "/", label: "Сток / Инвентаризация", icon: Package },
   { path: "/receiving", label: "Приёмка товара", icon: ClipboardList },
   { path: "/shipping", label: "Отгрузка товара", icon: Truck },
@@ -23,6 +28,10 @@ const AppSidebar = () => {
   const [collapsed, setCollapsed] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
+  const { currentUser, users, setCurrentUserId, getAllowedPaths } = useRoles();
+
+  const allowedPaths = getAllowedPaths();
+  const navItems = allNavItems.filter((item) => allowedPaths.includes(item.path));
 
   return (
     <aside
@@ -59,6 +68,38 @@ const AppSidebar = () => {
           );
         })}
       </nav>
+
+      {/* Current user selector */}
+      {!collapsed && (
+        <div className="px-3 py-3 border-t border-sidebar-border space-y-2">
+          <div className="flex items-center gap-2 text-[11px] text-sidebar-foreground/60 uppercase tracking-wider">
+            <UserCircle className="w-3.5 h-3.5" />
+            Текущий пользователь
+          </div>
+          <Select value={String(currentUser.id)} onValueChange={(v) => {
+            setCurrentUserId(Number(v));
+            // Navigate to first allowed path if current path is not allowed
+            const user = users.find(u => u.id === Number(v));
+            if (user) {
+              // Will be handled by effect
+            }
+          }}>
+            <SelectTrigger className="h-8 text-xs bg-sidebar-accent/30 border-sidebar-border">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {users.map((u) => (
+                <SelectItem key={u.id} value={String(u.id)} className="text-xs">
+                  <div className="flex items-center gap-2">
+                    {u.name}
+                    <span className="text-muted-foreground">({roleLabels[u.role]})</span>
+                  </div>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
 
       <button
         onClick={() => setCollapsed(!collapsed)}

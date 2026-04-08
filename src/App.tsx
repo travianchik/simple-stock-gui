@@ -3,6 +3,7 @@ import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { RoleProvider } from "./contexts/RoleContext";
 import AppLayout from "./components/AppLayout";
 import StockPage from "./pages/StockPage";
 import ReceivingPage from "./pages/ReceivingPage";
@@ -19,16 +20,18 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
-        <Routes>
-          <Route element={<AppLayout />}>
-            <Route path="/" element={<StockPage />} />
-            <Route path="/receiving" element={<ReceivingPage />} />
-            <Route path="/shipping" element={<ShippingPage />} />
-            <Route path="/returns" element={<ReturnsPage />} />
-            <Route path="/roles" element={<RolesPage />} />
-          </Route>
-          <Route path="*" element={<NotFound />} />
-        </Routes>
+        <RoleProvider>
+          <Routes>
+            <Route element={<AppLayout />}>
+              <Route path="/" element={<StockPage />} />
+              <Route path="/receiving" element={<ReceivingPage />} />
+              <Route path="/shipping" element={<ShippingPage />} />
+              <Route path="/returns" element={<ReturnsPage />} />
+              <Route path="/roles" element={<RolesPage />} />
+            </Route>
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </RoleProvider>
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>
