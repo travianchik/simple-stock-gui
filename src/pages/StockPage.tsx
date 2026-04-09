@@ -438,6 +438,29 @@ const StockPage = () => {
         </div>
       </div>
 
+      {/* UPD Preview Dialog */}
+      <Dialog open={!!updDialog} onOpenChange={() => setUpdDialog(null)}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileText className="w-5 h-5 text-primary" />
+              {updDialog?.upd}
+            </DialogTitle>
+            <DialogDescription>
+              Универсальный передаточный документ — {updDialog?.name}
+            </DialogDescription>
+          </DialogHeader>
+          {updDialog && (
+            <UPDDocument
+              data={toUPDData(updDialog)}
+              onDownload={() => downloadUPD(updDialog)}
+              onUpload={(file) => handleUploadUPD(updDialog, file)}
+              showUpload
+            />
+          )}
+        </DialogContent>
+      </Dialog>
+
       {/* Upload by barcode dialog */}
       <Dialog open={uploadByBarcodeMode} onOpenChange={(open) => {
         setUploadByBarcodeMode(open);
