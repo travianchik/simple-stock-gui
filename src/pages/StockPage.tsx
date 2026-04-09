@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import PageHeader from "@/components/PageHeader";
 import StatusBadge from "@/components/StatusBadge";
+import UPDDocument, { UPDDocumentData } from "@/components/UPDDocument";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -14,8 +15,9 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
-  Search, ScanLine, FileText, Download, Eye, Package, CheckCircle2, XCircle, AlertTriangle,
+  Search, ScanLine, FileText, Download, Eye, Package, CheckCircle2, XCircle, AlertTriangle, Upload,
 } from "lucide-react";
+import { toast } from "sonner";
 
 interface StockItem {
   id: number;
@@ -26,7 +28,9 @@ interface StockItem {
   brand: string;
   date: string;
   barcode: string;
-  items: { article: string; name: string; qty: number; barcode: string }[];
+  items: { article: string; name: string; qty: number; barcode: string; price?: number }[];
+  uploadedFileUrl?: string | null;
+  uploadedFileName?: string | null;
 }
 
 const mockStock: StockItem[] = [
@@ -34,52 +38,52 @@ const mockStock: StockItem[] = [
     id: 1, upd: "УПД-00142", name: "Футболка базовая белая", article: "FB-001", qty: 120,
     brand: "BasicWear", date: "02.04.2026", barcode: "4607012345671",
     items: [
-      { article: "FB-001-S", name: "Футболка белая S", qty: 40, barcode: "4607012345671-01" },
-      { article: "FB-001-M", name: "Футболка белая M", qty: 50, barcode: "4607012345671-02" },
-      { article: "FB-001-L", name: "Футболка белая L", qty: 30, barcode: "4607012345671-03" },
+      { article: "FB-001-S", name: "Футболка белая S", qty: 40, barcode: "4607012345671-01", price: 850 },
+      { article: "FB-001-M", name: "Футболка белая M", qty: 50, barcode: "4607012345671-02", price: 850 },
+      { article: "FB-001-L", name: "Футболка белая L", qty: 30, barcode: "4607012345671-03", price: 850 },
     ],
   },
   {
     id: 2, upd: "УПД-00143", name: "Джинсы slim fit", article: "JS-045", qty: 80,
     brand: "DenimPro", date: "01.04.2026", barcode: "4607012345672",
     items: [
-      { article: "JS-045-30", name: "Джинсы slim 30", qty: 30, barcode: "4607012345672-01" },
-      { article: "JS-045-32", name: "Джинсы slim 32", qty: 30, barcode: "4607012345672-02" },
-      { article: "JS-045-34", name: "Джинсы slim 34", qty: 20, barcode: "4607012345672-03" },
+      { article: "JS-045-30", name: "Джинсы slim 30", qty: 30, barcode: "4607012345672-01", price: 3200 },
+      { article: "JS-045-32", name: "Джинсы slim 32", qty: 30, barcode: "4607012345672-02", price: 3200 },
+      { article: "JS-045-34", name: "Джинсы slim 34", qty: 20, barcode: "4607012345672-03", price: 3200 },
     ],
   },
   {
     id: 3, upd: "УПД-00144", name: "Кроссовки спортивные", article: "KS-112", qty: 45,
     brand: "RunStyle", date: "31.03.2026", barcode: "4607012345673",
     items: [
-      { article: "KS-112-41", name: "Кроссовки 41", qty: 15, barcode: "4607012345673-01" },
-      { article: "KS-112-42", name: "Кроссовки 42", qty: 15, barcode: "4607012345673-02" },
-      { article: "KS-112-43", name: "Кроссовки 43", qty: 15, barcode: "4607012345673-03" },
+      { article: "KS-112-41", name: "Кроссовки 41", qty: 15, barcode: "4607012345673-01", price: 5600 },
+      { article: "KS-112-42", name: "Кроссовки 42", qty: 15, barcode: "4607012345673-02", price: 5600 },
+      { article: "KS-112-43", name: "Кроссовки 43", qty: 15, barcode: "4607012345673-03", price: 5600 },
     ],
   },
   {
     id: 4, upd: "УПД-00145", name: "Худи оверсайз", article: "HO-023", qty: 200,
     brand: "BasicWear", date: "30.03.2026", barcode: "4607012345674",
     items: [
-      { article: "HO-023-S", name: "Худи оверсайз S", qty: 60, barcode: "4607012345674-01" },
-      { article: "HO-023-M", name: "Худи оверсайз M", qty: 80, barcode: "4607012345674-02" },
-      { article: "HO-023-L", name: "Худи оверсайз L", qty: 60, barcode: "4607012345674-03" },
+      { article: "HO-023-S", name: "Худи оверсайз S", qty: 60, barcode: "4607012345674-01", price: 2400 },
+      { article: "HO-023-M", name: "Худи оверсайз M", qty: 80, barcode: "4607012345674-02", price: 2400 },
+      { article: "HO-023-L", name: "Худи оверсайз L", qty: 60, barcode: "4607012345674-03", price: 2400 },
     ],
   },
   {
     id: 5, upd: "УПД-00146", name: "Рюкзак городской", article: "RG-008", qty: 60,
     brand: "UrbanBag", date: "29.03.2026", barcode: "4607012345675",
     items: [
-      { article: "RG-008-BK", name: "Рюкзак чёрный", qty: 30, barcode: "4607012345675-01" },
-      { article: "RG-008-GR", name: "Рюкзак серый", qty: 30, barcode: "4607012345675-02" },
+      { article: "RG-008-BK", name: "Рюкзак чёрный", qty: 30, barcode: "4607012345675-01", price: 4100 },
+      { article: "RG-008-GR", name: "Рюкзак серый", qty: 30, barcode: "4607012345675-02", price: 4100 },
     ],
   },
   {
     id: 6, upd: "УПД-00147", name: "Шапка вязаная", article: "SV-019", qty: 150,
     brand: "WarmHead", date: "28.03.2026", barcode: "4607012345676",
     items: [
-      { article: "SV-019-BK", name: "Шапка чёрная", qty: 75, barcode: "4607012345676-01" },
-      { article: "SV-019-WH", name: "Шапка белая", qty: 75, barcode: "4607012345676-02" },
+      { article: "SV-019-BK", name: "Шапка чёрная", qty: 75, barcode: "4607012345676-01", price: 1200 },
+      { article: "SV-019-WH", name: "Шапка белая", qty: 75, barcode: "4607012345676-02", price: 1200 },
     ],
   },
 ];
@@ -92,12 +96,13 @@ const StockPage = () => {
   const [scannedIds, setScannedIds] = useState<number[]>([]);
   const [scanInput, setScanInput] = useState("");
   const [updDialog, setUpdDialog] = useState<StockItem | null>(null);
+  const [stockItems, setStockItems] = useState<StockItem[]>(mockStock);
 
-  const brands = useMemo(() => [...new Set(mockStock.map((i) => i.brand))], []);
+  const brands = useMemo(() => [...new Set(stockItems.map((i) => i.brand))], [stockItems]);
 
   const filtered = useMemo(
     () =>
-      mockStock.filter((item) => {
+      stockItems.filter((item) => {
         const matchSearch =
           item.name.toLowerCase().includes(search.toLowerCase()) ||
           item.upd.toLowerCase().includes(search.toLowerCase()) ||
@@ -106,7 +111,7 @@ const StockPage = () => {
         const matchBrand = brandFilter === "all" || item.brand === brandFilter;
         return matchSearch && matchBrand;
       }),
-    [search, brandFilter]
+    [search, brandFilter, stockItems]
   );
 
   const handleScan = (id: number) => {
@@ -115,7 +120,7 @@ const StockPage = () => {
 
   const handleBarcodeScan = () => {
     if (!scanInput.trim()) return;
-    const found = mockStock.find(
+    const found = stockItems.find(
       (item) =>
         item.barcode === scanInput.trim() || item.upd.toLowerCase() === scanInput.trim().toLowerCase()
     );
@@ -148,7 +153,21 @@ const StockPage = () => {
     return { label: "Не проверен", type: "default" as const };
   };
 
-  const notScannedCount = inventoryMode ? mockStock.length - scannedIds.length : 0;
+  const notScannedCount = inventoryMode ? stockItems.length - scannedIds.length : 0;
+
+  const handleUploadUPD = (item: StockItem, file: File) => {
+    const url = URL.createObjectURL(file);
+    setStockItems((prev) =>
+      prev.map((i) =>
+        i.id === item.id ? { ...i, uploadedFileUrl: url, uploadedFileName: file.name } : i
+      )
+    );
+    // Update dialog item too
+    if (updDialog?.id === item.id) {
+      setUpdDialog({ ...item, uploadedFileUrl: url, uploadedFileName: file.name });
+    }
+    toast.success(`Файл "${file.name}" загружен к ${item.upd}`);
+  };
 
   const downloadUPD = (item: StockItem) => {
     const lines = [
@@ -168,8 +187,6 @@ const StockPage = () => {
       ),
       `───────────────────────────────────`,
       `${"".padEnd(16)} ${"ИТОГО:".padEnd(28)} ${String(item.qty).padStart(8)}`,
-      ``,
-      `QR/ШК для сканирования: ${item.barcode}`,
     ];
     const blob = new Blob([lines.join("\n")], { type: "text/plain;charset=utf-8" });
     const url = URL.createObjectURL(blob);
@@ -180,6 +197,34 @@ const StockPage = () => {
     URL.revokeObjectURL(url);
   };
 
+  const toUPDData = (item: StockItem): UPDDocumentData => ({
+    number: item.upd,
+    date: item.date,
+    seller: `${item.brand} (Поставщик)`,
+    buyer: 'ООО "Свой Склад"',
+    items: item.items.map((i) => ({
+      article: i.article,
+      name: i.name,
+      qty: i.qty,
+      price: i.price ?? 0,
+      total: i.qty * (i.price ?? 0),
+      vatRate: "20%",
+      vatAmount: Math.round(i.qty * (i.price ?? 0) * 0.2 * 100) / 100,
+      totalWithVat: Math.round(i.qty * (i.price ?? 0) * 1.2 * 100) / 100,
+      barcode: i.barcode,
+    })),
+    totalQty: item.qty,
+    uploadedFileUrl: item.uploadedFileUrl,
+  });
+
+  // Bulk upload handler
+  const handleBulkUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+    toast.info(`Загружено ${files.length} файл(ов) УПД. Привяжите их к конкретным УПД через просмотр.`);
+    e.target.value = "";
+  };
+
   return (
     <div className="flex flex-col h-full">
       <PageHeader
@@ -187,6 +232,15 @@ const StockPage = () => {
         description="Общий список остатков товара на складе"
         actions={
           <div className="flex items-center gap-2">
+            <label>
+              <input type="file" className="hidden" accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx" multiple onChange={handleBulkUpload} />
+              <Button variant="outline" size="sm" asChild>
+                <span>
+                  <Upload className="w-4 h-4 mr-2" />
+                  Загрузить УПД
+                </span>
+              </Button>
+            </label>
             {inventoryMode ? (
               <>
                 {inventoryFinished ? (
@@ -292,6 +346,7 @@ const StockPage = () => {
                 <TableHead className="text-xs font-medium">Бренд</TableHead>
                 <TableHead className="text-xs font-medium">Штрих-код</TableHead>
                 <TableHead className="text-xs font-medium">Дата</TableHead>
+                <TableHead className="text-xs font-medium">Файл</TableHead>
                 <TableHead className="text-xs font-medium">Статус</TableHead>
                 <TableHead className="text-xs font-medium w-20"></TableHead>
               </TableRow>
@@ -329,6 +384,16 @@ const StockPage = () => {
                     <TableCell className="text-sm font-mono text-muted-foreground">{item.barcode}</TableCell>
                     <TableCell className="text-sm text-muted-foreground">{item.date}</TableCell>
                     <TableCell>
+                      {item.uploadedFileUrl ? (
+                        <Badge variant="secondary" className="gap-1 text-xs">
+                          <FileText className="w-3 h-3" />
+                          Загружен
+                        </Badge>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
                       <StatusBadge status={status.type} label={status.label} />
                     </TableCell>
                     <TableCell>
@@ -348,7 +413,7 @@ const StockPage = () => {
               })}
               {filtered.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={10} className="text-center text-muted-foreground py-8">
                     Ничего не найдено
                   </TableCell>
                 </TableRow>
@@ -360,59 +425,23 @@ const StockPage = () => {
 
       {/* UPD Preview Dialog */}
       <Dialog open={!!updDialog} onOpenChange={() => setUpdDialog(null)}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <FileText className="w-5 h-5 text-primary" />
               {updDialog?.upd}
             </DialogTitle>
             <DialogDescription>
-              Содержимое коробки — {updDialog?.name}
+              Универсальный передаточный документ — {updDialog?.name}
             </DialogDescription>
           </DialogHeader>
           {updDialog && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-2 text-sm">
-                <div className="text-muted-foreground">Бренд</div>
-                <div className="font-medium">{updDialog.brand}</div>
-                <div className="text-muted-foreground">Дата</div>
-                <div className="font-medium">{updDialog.date}</div>
-                <div className="text-muted-foreground">Штрих-код</div>
-                <div className="font-mono font-medium">{updDialog.barcode}</div>
-                <div className="text-muted-foreground">Общее кол-во</div>
-                <div className="font-medium">{updDialog.qty} шт.</div>
-              </div>
-
-              <div className="rounded-lg border border-border overflow-hidden">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="bg-muted/50">
-                      <TableHead className="text-xs">Артикул</TableHead>
-                      <TableHead className="text-xs">Наименование</TableHead>
-                      <TableHead className="text-xs text-right">Кол-во</TableHead>
-                      <TableHead className="text-xs">ШК</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {updDialog.items.map((i, idx) => (
-                      <TableRow key={idx}>
-                        <TableCell className="text-sm font-mono">{i.article}</TableCell>
-                        <TableCell className="text-sm">{i.name}</TableCell>
-                        <TableCell className="text-sm text-right">{i.qty}</TableCell>
-                        <TableCell className="text-sm font-mono text-muted-foreground">{i.barcode}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-
-              <div className="flex justify-end">
-                <Button variant="outline" size="sm" onClick={() => downloadUPD(updDialog)}>
-                  <Download className="w-4 h-4 mr-2" />
-                  Скачать УПД
-                </Button>
-              </div>
-            </div>
+            <UPDDocument
+              data={toUPDData(updDialog)}
+              onDownload={() => downloadUPD(updDialog)}
+              onUpload={(file) => handleUploadUPD(updDialog, file)}
+              showUpload
+            />
           )}
         </DialogContent>
       </Dialog>

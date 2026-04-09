@@ -17,6 +17,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   ScanLine, FileText, Search, CheckCircle2, Eye, RotateCcw, Package, Download, AlertTriangle,
 } from "lucide-react";
+import UPDDocument from "@/components/UPDDocument";
 
 interface ReturnItem {
   article: string;
@@ -497,58 +498,33 @@ const ReturnsPage = () => {
 
       {/* UPD Preview Dialog */}
       <Dialog open={!!updDialog} onOpenChange={() => setUpdDialog(null)}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <FileText className="w-5 h-5 text-primary" />
               {updDialog?.upd}
             </DialogTitle>
             <DialogDescription>
-              Содержимое возвратной коробки
+              Универсальный передаточный документ (возврат) — {updDialog?.reason}
             </DialogDescription>
           </DialogHeader>
           {updDialog && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-2 text-sm">
-                <div className="text-muted-foreground">Заказ</div>
-                <div className="font-medium">{updDialog.order}</div>
-                <div className="text-muted-foreground">Маркетплейс</div>
-                <div className="font-medium">{updDialog.marketplace}</div>
-                <div className="text-muted-foreground">Бренд</div>
-                <div className="font-medium">{updDialog.brand}</div>
-                <div className="text-muted-foreground">Причина возврата</div>
-                <div className="font-medium text-destructive">{updDialog.reason}</div>
-                <div className="text-muted-foreground">Дата возврата</div>
-                <div className="font-medium">{updDialog.returnDate}</div>
-                <div className="text-muted-foreground">Штрих-код</div>
-                <div className="font-mono font-medium">{updDialog.barcode}</div>
-                <div className="text-muted-foreground">Общее кол-во</div>
-                <div className="font-medium">{updDialog.totalQty} шт.</div>
-              </div>
-
-              <div className="rounded-lg border border-border overflow-hidden">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="bg-muted/50">
-                      <TableHead className="text-xs">Артикул</TableHead>
-                      <TableHead className="text-xs">Наименование</TableHead>
-                      <TableHead className="text-xs text-right">Кол-во</TableHead>
-                      <TableHead className="text-xs">ШК</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {updDialog.items.map((item, idx) => (
-                      <TableRow key={idx}>
-                        <TableCell className="text-sm font-mono">{item.article}</TableCell>
-                        <TableCell className="text-sm">{item.name}</TableCell>
-                        <TableCell className="text-sm text-right">{item.qty}</TableCell>
-                        <TableCell className="text-sm font-mono text-muted-foreground">{item.barcode}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            </div>
+            <UPDDocument
+              data={{
+                number: updDialog.upd,
+                date: updDialog.returnDate,
+                seller: updDialog.marketplace,
+                buyer: 'ООО "Свой Склад"',
+                items: updDialog.items.map((i) => ({
+                  article: i.article,
+                  name: i.name,
+                  qty: i.qty,
+                  price: 0,
+                  barcode: i.barcode,
+                })),
+                totalQty: updDialog.totalQty,
+              }}
+            />
           )}
         </DialogContent>
       </Dialog>
