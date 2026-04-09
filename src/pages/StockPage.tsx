@@ -252,15 +252,10 @@ const StockPage = () => {
         description="Общий список остатков товара на складе"
         actions={
           <div className="flex items-center gap-2">
-            <label>
-              <input type="file" className="hidden" accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx" multiple onChange={handleBulkUpload} />
-              <Button variant="outline" size="sm" asChild>
-                <span>
-                  <Upload className="w-4 h-4 mr-2" />
-                  Загрузить УПД
-                </span>
-              </Button>
-            </label>
+            <Button variant="outline" size="sm" onClick={() => setUploadByBarcodeMode(true)}>
+              <Upload className="w-4 h-4 mr-2" />
+              Загрузить УПД
+            </Button>
             {inventoryMode ? (
               <>
                 {inventoryFinished ? (
