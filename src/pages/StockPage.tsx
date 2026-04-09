@@ -438,26 +438,75 @@ const StockPage = () => {
         </div>
       </div>
 
-      {/* UPD Preview Dialog */}
-      <Dialog open={!!updDialog} onOpenChange={() => setUpdDialog(null)}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+      {/* Upload by barcode dialog */}
+      <Dialog open={uploadByBarcodeMode} onOpenChange={(open) => {
+        setUploadByBarcodeMode(open);
+        if (!open) { setUploadBarcode(""); setUploadTargetItem(null); }
+      }}>
+        <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <FileText className="w-5 h-5 text-primary" />
-              {updDialog?.upd}
+              <Upload className="w-5 h-5 text-primary" />
+              Загрузить УПД по штрих-коду
             </DialogTitle>
             <DialogDescription>
-              Универсальный передаточный документ — {updDialog?.name}
+              Отсканируйте или введите штрих-код товара, чтобы привязать файл УПД
             </DialogDescription>
           </DialogHeader>
-          {updDialog && (
-            <UPDDocument
-              data={toUPDData(updDialog)}
-              onDownload={() => downloadUPD(updDialog)}
-              onUpload={(file) => handleUploadUPD(updDialog, file)}
-              showUpload
-            />
-          )}
+          <div className="space-y-4">
+            <div className="flex items-center gap-2">
+              <div className="relative flex-1">
+                <ScanLine className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input
+                  placeholder="Штрих-код или номер УПД..."
+                  value={uploadBarcode}
+                  onChange={(e) => setUploadBarcode(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleBarcodeUploadSearch()}
+                  className="pl-9"
+                  autoFocus
+                />
+              </div>
+              <Button size="sm" onClick={handleBarcodeUploadSearch}>Найти</Button>
+            </div>
+
+            {uploadTargetItem && (
+              <div className="rounded-lg border border-primary/30 bg-primary/5 p-4 space-y-3">
+                <div className="flex items-center gap-2">
+                  <Package className="w-4 h-4 text-primary" />
+                  <span className="font-medium text-sm">{uploadTargetItem.upd}</span>
+                  <span className="text-muted-foreground text-sm">— {uploadTargetItem.name}</span>
+                </div>
+                <div className="text-xs text-muted-foreground space-y-1">
+                  <div>Артикул: {uploadTargetItem.article} | Бренд: {uploadTargetItem.brand}</div>
+                  <div>Штрих-код: {uploadTargetItem.barcode} | Кол-во: {uploadTargetItem.qty} шт.</div>
+                </div>
+                {uploadTargetItem.uploadedFileUrl ? (
+                  <div className="flex items-center gap-2 text-sm text-success">
+                    <CheckCircle2 className="w-4 h-4" />
+                    Файл уже загружен: {uploadTargetItem.uploadedFileName}
+                  </div>
+                ) : null}
+                <label>
+                  <input
+                    type="file"
+                    className="hidden"
+                    accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) handleBarcodeUploadFile(file);
+                      e.target.value = "";
+                    }}
+                  />
+                  <Button variant="default" size="sm" asChild className="w-full">
+                    <span>
+                      <Upload className="w-4 h-4 mr-2" />
+                      {uploadTargetItem.uploadedFileUrl ? "Заменить файл" : "Загрузить файл УПД"}
+                    </span>
+                  </Button>
+                </label>
+              </div>
+            )}
+          </div>
         </DialogContent>
       </Dialog>
     </div>
