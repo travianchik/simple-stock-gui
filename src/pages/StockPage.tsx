@@ -220,12 +220,29 @@ const StockPage = () => {
     uploadedFileUrl: item.uploadedFileUrl,
   });
 
-  // Bulk upload handler
-  const handleBulkUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files) return;
-    toast.info(`Загружено ${files.length} файл(ов) УПД. Привяжите их к конкретным УПД через просмотр.`);
-    e.target.value = "";
+  const handleBarcodeUploadSearch = () => {
+    if (!uploadBarcode.trim()) return;
+    const found = stockItems.find(
+      (item) =>
+        item.barcode === uploadBarcode.trim() ||
+        item.upd.toLowerCase() === uploadBarcode.trim().toLowerCase() ||
+        item.items.some((i) => i.barcode === uploadBarcode.trim())
+    );
+    if (found) {
+      setUploadTargetItem(found);
+      toast.success(`Найден: ${found.upd} — ${found.name}`);
+    } else {
+      setUploadTargetItem(null);
+      toast.error("Товар с таким штрих-кодом не найден");
+    }
+  };
+
+  const handleBarcodeUploadFile = (file: File) => {
+    if (!uploadTargetItem) return;
+    handleUploadUPD(uploadTargetItem, file);
+    setUploadBarcode("");
+    setUploadTargetItem(null);
+    setUploadByBarcodeMode(false);
   };
 
   return (
