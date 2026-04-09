@@ -17,6 +17,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   ScanLine, FileText, Package, Search, CheckCircle2, XCircle, Eye, Truck, Plus, Download,
 } from "lucide-react";
+import UPDDocument, { UPDDocumentData } from "@/components/UPDDocument";
 
 interface UPDItem {
   id: number;
@@ -482,49 +483,30 @@ const ShippingPage = () => {
 
       {/* UPD Preview Dialog */}
       <Dialog open={!!updDialog} onOpenChange={() => setUpdDialog(null)}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <FileText className="w-5 h-5 text-primary" />
               {updDialog?.upd}
             </DialogTitle>
-            <DialogDescription>Содержимое коробки — Заказ {updDialog?.order}</DialogDescription>
+            <DialogDescription>Универсальный передаточный документ — Заказ {updDialog?.order}</DialogDescription>
           </DialogHeader>
           {updDialog && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-2 text-sm">
-                <div className="text-muted-foreground">Маркетплейс</div>
-                <div className="font-medium">{updDialog.marketplace}</div>
-                <div className="text-muted-foreground">Бренд</div>
-                <div className="font-medium">{updDialog.brand}</div>
-                <div className="text-muted-foreground">Заказ</div>
-                <div className="font-medium">{updDialog.order}</div>
-                <div className="text-muted-foreground">Штрих-код</div>
-                <div className="font-mono font-medium">{updDialog.barcode}</div>
-                <div className="text-muted-foreground">Всего товаров</div>
-                <div className="font-medium">{updDialog.items} шт.</div>
-              </div>
-              <div className="rounded-lg border border-border overflow-hidden">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="bg-muted/50">
-                      <TableHead className="text-xs">Артикул</TableHead>
-                      <TableHead className="text-xs">Наименование</TableHead>
-                      <TableHead className="text-xs text-right">Кол-во</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {updDialog.contents.map((c, i) => (
-                      <TableRow key={i}>
-                        <TableCell className="text-sm font-mono">{c.article}</TableCell>
-                        <TableCell className="text-sm">{c.name}</TableCell>
-                        <TableCell className="text-sm text-right">{c.qty}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            </div>
+            <UPDDocument
+              data={{
+                number: updDialog.upd,
+                date: new Date().toLocaleDateString("ru-RU"),
+                seller: `${updDialog.brand} (Поставщик)`,
+                buyer: updDialog.marketplace,
+                items: updDialog.contents.map((c) => ({
+                  article: c.article,
+                  name: c.name,
+                  qty: c.qty,
+                  price: 0,
+                })),
+                totalQty: updDialog.items,
+              }}
+            />
           )}
         </DialogContent>
       </Dialog>
