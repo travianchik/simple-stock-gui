@@ -97,6 +97,9 @@ const StockPage = () => {
   const [scanInput, setScanInput] = useState("");
   const [updDialog, setUpdDialog] = useState<StockItem | null>(null);
   const [stockItems, setStockItems] = useState<StockItem[]>(mockStock);
+  const [uploadByBarcodeMode, setUploadByBarcodeMode] = useState(false);
+  const [uploadBarcode, setUploadBarcode] = useState("");
+  const [uploadTargetItem, setUploadTargetItem] = useState<StockItem | null>(null);
 
   const brands = useMemo(() => [...new Set(stockItems.map((i) => i.brand))], [stockItems]);
 
