@@ -345,12 +345,13 @@ const StockPage = () => {
     setUploadTargetItem(newItem);
   };
 
-  const handleBarcodeUploadFile = (file: File) => {
+  const handleBarcodeAddToStock = () => {
     if (!uploadTargetItem) return;
-    handleUploadUPD(uploadTargetItem, file);
+    setStockItems((prev) => [uploadTargetItem, ...prev]);
+    toast.success(`УПД ${uploadTargetItem.upd} добавлен в Сток`);
     setUploadBarcode("");
     setUploadTargetItem(null);
-    setUploadByBarcodeMode(false);
+    setUploadDialogOpen(false);
   };
 
   return (
