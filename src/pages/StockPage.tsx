@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import PageHeader from "@/components/PageHeader";
 import StatusBadge from "@/components/StatusBadge";
 import UPDDocument, { UPDDocumentData } from "@/components/UPDDocument";
@@ -97,9 +97,11 @@ const StockPage = () => {
   const [scanInput, setScanInput] = useState("");
   const [updDialog, setUpdDialog] = useState<StockItem | null>(null);
   const [stockItems, setStockItems] = useState<StockItem[]>(mockStock);
-  const [uploadByBarcodeMode, setUploadByBarcodeMode] = useState(false);
+  const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
+  const [uploadTab, setUploadTab] = useState<"file" | "barcode">("file");
   const [uploadBarcode, setUploadBarcode] = useState("");
   const [uploadTargetItem, setUploadTargetItem] = useState<StockItem | null>(null);
+  const xmlInputRef = useRef<HTMLInputElement>(null);
 
   const brands = useMemo(() => [...new Set(stockItems.map((i) => i.brand))], [stockItems]);
 
@@ -220,8 +222,100 @@ const StockPage = () => {
     uploadedFileUrl: item.uploadedFileUrl,
   });
 
+  const parseXMLToStockItem = (xmlText: string): StockItem | null => {
+    try {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(xmlText, "text/xml");
+      
+      const errorNode = doc.querySelector("parsererror");
+      if (errorNode) {
+        toast.error("Ошибка разбора XML файла");
+        return null;
+      }
+
+      // Try to extract UPD number from common XML structures
+      const docNumber = doc.querySelector("Документ, Document, СвСчФакт, ИдДок")?.getAttribute("НомерСчФ") 
+        || doc.querySelector("Документ, Document")?.getAttribute("Номер")
+        || doc.querySelector("НомерДок, DocNumber")?.textContent
+        || doc.querySelector("[НомерСчФ]")?.getAttribute("НомерСчФ")
+        || `УПД-${String(Date.now()).slice(-5)}`;
+
+      const updNumber = docNumber.startsWith("УПД") ? docNumber : `УПД-${docNumber}`;
+
+      const dateAttr = doc.querySelector("Документ, Document, СвСчФакт")?.getAttribute("ДатаСчФ")
+        || doc.querySelector("ДатаДок, DocDate")?.textContent
+        || new Date().toLocaleDateString("ru-RU");
+
+      const sellerName = doc.querySelector("СвПрод, Продавец, Seller")?.getAttribute("НаимОрг")
+        || doc.querySelector("НаимПрод, SellerName")?.textContent
+        || "Поставщик";
+
+      // Parse items from table rows
+      const itemNodes = doc.querySelectorAll("СведТов, ТоварнаяСтрока, Item, Товар, ТаблСчФакт > *");
+      const items: StockItem["items"] = [];
+      
+      itemNodes.forEach((node, idx) => {
+        const name = node.getAttribute("НаимТов") || node.querySelector("Наименование, Name")?.textContent || `Товар ${idx + 1}`;
+        const article = node.getAttribute("Артикул") || node.querySelector("Артикул, Article, КодТов")?.textContent || `ART-${idx + 1}`;
+        const qty = parseInt(node.getAttribute("КолТов") || node.querySelector("Количество, Qty, Кол")?.textContent || "1", 10);
+        const price = parseFloat(node.getAttribute("ЦенаТов") || node.querySelector("Цена, Price")?.textContent || "0");
+        const barcode = node.getAttribute("ШтрихКод") || node.querySelector("ШтрихКод, Barcode")?.textContent || `${Date.now()}-${idx}`;
+        
+        items.push({ article, name, qty, barcode, price });
+      });
+
+      if (items.length === 0) {
+        items.push({ article: "N/A", name: "Товар из УПД", qty: 1, barcode: String(Date.now()), price: 0 });
+      }
+
+      const totalQty = items.reduce((s, i) => s + i.qty, 0);
+
+      return {
+        id: Date.now(),
+        upd: updNumber,
+        name: items[0]?.name || "Товар",
+        article: items[0]?.article || "N/A",
+        qty: totalQty,
+        brand: sellerName,
+        date: dateAttr,
+        barcode: items[0]?.barcode || String(Date.now()),
+        items,
+        uploadedFileUrl: null,
+        uploadedFileName: null,
+      };
+    } catch {
+      toast.error("Не удалось разобрать XML файл");
+      return null;
+    }
+  };
+
+  const handleXMLUpload = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const text = e.target?.result as string;
+      const item = parseXMLToStockItem(text);
+      if (!item) return;
+
+      // Check for duplicates
+      const exists = stockItems.some(
+        (s) => s.upd.toLowerCase() === item.upd.toLowerCase()
+      );
+      if (exists) {
+        toast.error(`УПД ${item.upd} уже существует в списке`);
+        return;
+      }
+
+      setStockItems((prev) => [item, ...prev]);
+      toast.success(`УПД ${item.upd} успешно добавлен в Сток`);
+      setUploadDialogOpen(false);
+    };
+    reader.readAsText(file);
+  };
+
   const handleBarcodeUploadSearch = () => {
     if (!uploadBarcode.trim()) return;
+    
+    // Check if already exists
     const found = stockItems.find(
       (item) =>
         item.barcode === uploadBarcode.trim() ||
@@ -229,20 +323,35 @@ const StockPage = () => {
         item.items.some((i) => i.barcode === uploadBarcode.trim())
     );
     if (found) {
-      setUploadTargetItem(found);
-      toast.success(`Найден: ${found.upd} — ${found.name}`);
-    } else {
+      toast.error(`УПД ${found.upd} уже существует в списке`);
       setUploadTargetItem(null);
-      toast.error("Товар с таким штрих-кодом не найден");
+      return;
     }
+
+    // Create new item from barcode
+    const newItem: StockItem = {
+      id: Date.now(),
+      upd: `УПД-${uploadBarcode.trim().slice(-5)}`,
+      name: "Товар (по штрих-коду)",
+      article: "N/A",
+      qty: 0,
+      brand: "Не указан",
+      date: new Date().toLocaleDateString("ru-RU"),
+      barcode: uploadBarcode.trim(),
+      items: [],
+      uploadedFileUrl: null,
+      uploadedFileName: null,
+    };
+    setUploadTargetItem(newItem);
   };
 
-  const handleBarcodeUploadFile = (file: File) => {
+  const handleBarcodeAddToStock = () => {
     if (!uploadTargetItem) return;
-    handleUploadUPD(uploadTargetItem, file);
+    setStockItems((prev) => [uploadTargetItem, ...prev]);
+    toast.success(`УПД ${uploadTargetItem.upd} добавлен в Сток`);
     setUploadBarcode("");
     setUploadTargetItem(null);
-    setUploadByBarcodeMode(false);
+    setUploadDialogOpen(false);
   };
 
   return (
@@ -252,7 +361,7 @@ const StockPage = () => {
         description="Общий список остатков товара на складе"
         actions={
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={() => setUploadByBarcodeMode(true)}>
+            <Button variant="outline" size="sm" onClick={() => { setUploadDialogOpen(true); setUploadTab("file"); }}>
               <Upload className="w-4 h-4 mr-2" />
               Загрузить УПД
             </Button>
@@ -461,75 +570,106 @@ const StockPage = () => {
         </DialogContent>
       </Dialog>
 
-      {/* Upload by barcode dialog */}
-      <Dialog open={uploadByBarcodeMode} onOpenChange={(open) => {
-        setUploadByBarcodeMode(open);
-        if (!open) { setUploadBarcode(""); setUploadTargetItem(null); }
+      {/* Upload UPD dialog - two modes */}
+      <Dialog open={uploadDialogOpen} onOpenChange={(open) => {
+        setUploadDialogOpen(open);
+        if (!open) { setUploadBarcode(""); setUploadTargetItem(null); setUploadTab("file"); }
       }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Upload className="w-5 h-5 text-primary" />
-              Загрузить УПД по штрих-коду
+              Загрузить УПД
             </DialogTitle>
             <DialogDescription>
-              Отсканируйте или введите штрих-код товара, чтобы привязать файл УПД
+              Загрузите XML-файл УПД или отсканируйте штрих-код
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
-            <div className="flex items-center gap-2">
-              <div className="relative flex-1">
-                <ScanLine className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input
-                  placeholder="Штрих-код или номер УПД..."
-                  value={uploadBarcode}
-                  onChange={(e) => setUploadBarcode(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && handleBarcodeUploadSearch()}
-                  className="pl-9"
-                  autoFocus
-                />
-              </div>
-              <Button size="sm" onClick={handleBarcodeUploadSearch}>Найти</Button>
-            </div>
 
-            {uploadTargetItem && (
-              <div className="rounded-lg border border-primary/30 bg-primary/5 p-4 space-y-3">
-                <div className="flex items-center gap-2">
-                  <Package className="w-4 h-4 text-primary" />
-                  <span className="font-medium text-sm">{uploadTargetItem.upd}</span>
-                  <span className="text-muted-foreground text-sm">— {uploadTargetItem.name}</span>
-                </div>
-                <div className="text-xs text-muted-foreground space-y-1">
-                  <div>Артикул: {uploadTargetItem.article} | Бренд: {uploadTargetItem.brand}</div>
-                  <div>Штрих-код: {uploadTargetItem.barcode} | Кол-во: {uploadTargetItem.qty} шт.</div>
-                </div>
-                {uploadTargetItem.uploadedFileUrl ? (
-                  <div className="flex items-center gap-2 text-sm text-success">
-                    <CheckCircle2 className="w-4 h-4" />
-                    Файл уже загружен: {uploadTargetItem.uploadedFileName}
-                  </div>
-                ) : null}
-                <label>
-                  <input
-                    type="file"
-                    className="hidden"
-                    accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (file) handleBarcodeUploadFile(file);
-                      e.target.value = "";
-                    }}
-                  />
-                  <Button variant="default" size="sm" asChild className="w-full">
-                    <span>
-                      <Upload className="w-4 h-4 mr-2" />
-                      {uploadTargetItem.uploadedFileUrl ? "Заменить файл" : "Загрузить файл УПД"}
-                    </span>
-                  </Button>
-                </label>
-              </div>
-            )}
+          {/* Tab switcher */}
+          <div className="flex gap-2 border-b border-border pb-2">
+            <Button
+              variant={uploadTab === "file" ? "default" : "ghost"}
+              size="sm"
+              onClick={() => { setUploadTab("file"); setUploadTargetItem(null); setUploadBarcode(""); }}
+            >
+              <FileText className="w-4 h-4 mr-1" />
+              XML файл
+            </Button>
+            <Button
+              variant={uploadTab === "barcode" ? "default" : "ghost"}
+              size="sm"
+              onClick={() => { setUploadTab("barcode"); setUploadTargetItem(null); }}
+            >
+              <ScanLine className="w-4 h-4 mr-1" />
+              Штрих-код
+            </Button>
           </div>
+
+          {uploadTab === "file" && (
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Выберите XML-файл универсального передаточного документа. Система автоматически считает данные и добавит УПД в Сток.
+              </p>
+              <input
+                ref={xmlInputRef}
+                type="file"
+                className="hidden"
+                accept=".xml"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) handleXMLUpload(file);
+                  e.target.value = "";
+                }}
+              />
+              <Button
+                variant="outline"
+                className="w-full h-24 border-dashed border-2 flex flex-col gap-2"
+                onClick={() => xmlInputRef.current?.click()}
+              >
+                <Upload className="w-6 h-6 text-muted-foreground" />
+                <span className="text-sm text-muted-foreground">Нажмите для выбора XML файла</span>
+              </Button>
+            </div>
+          )}
+
+          {uploadTab === "barcode" && (
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Отсканируйте штрих-код с печатного УПД или введите его вручную.
+              </p>
+              <div className="flex items-center gap-2">
+                <div className="relative flex-1">
+                  <ScanLine className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Штрих-код или номер УПД..."
+                    value={uploadBarcode}
+                    onChange={(e) => setUploadBarcode(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleBarcodeUploadSearch()}
+                    className="pl-9"
+                    autoFocus
+                  />
+                </div>
+                <Button size="sm" onClick={handleBarcodeUploadSearch}>Найти</Button>
+              </div>
+
+              {uploadTargetItem && (
+                <div className="rounded-lg border border-primary/30 bg-primary/5 p-4 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <Package className="w-4 h-4 text-primary" />
+                    <span className="font-medium text-sm">{uploadTargetItem.upd}</span>
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    Штрих-код: {uploadTargetItem.barcode}
+                  </div>
+                  <Button variant="default" size="sm" className="w-full" onClick={handleBarcodeAddToStock}>
+                    <CheckCircle2 className="w-4 h-4 mr-2" />
+                    Добавить в Сток
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>
