@@ -361,7 +361,7 @@ const StockPage = () => {
         description="Общий список остатков товара на складе"
         actions={
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={() => setUploadByBarcodeMode(true)}>
+            <Button variant="outline" size="sm" onClick={() => { setUploadDialogOpen(true); setUploadTab("file"); }}>
               <Upload className="w-4 h-4 mr-2" />
               Загрузить УПД
             </Button>
@@ -570,75 +570,106 @@ const StockPage = () => {
         </DialogContent>
       </Dialog>
 
-      {/* Upload by barcode dialog */}
-      <Dialog open={uploadByBarcodeMode} onOpenChange={(open) => {
-        setUploadByBarcodeMode(open);
-        if (!open) { setUploadBarcode(""); setUploadTargetItem(null); }
+      {/* Upload UPD dialog - two modes */}
+      <Dialog open={uploadDialogOpen} onOpenChange={(open) => {
+        setUploadDialogOpen(open);
+        if (!open) { setUploadBarcode(""); setUploadTargetItem(null); setUploadTab("file"); }
       }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Upload className="w-5 h-5 text-primary" />
-              Загрузить УПД по штрих-коду
+              Загрузить УПД
             </DialogTitle>
             <DialogDescription>
-              Отсканируйте или введите штрих-код товара, чтобы привязать файл УПД
+              Загрузите XML-файл УПД или отсканируйте штрих-код
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
-            <div className="flex items-center gap-2">
-              <div className="relative flex-1">
-                <ScanLine className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input
-                  placeholder="Штрих-код или номер УПД..."
-                  value={uploadBarcode}
-                  onChange={(e) => setUploadBarcode(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && handleBarcodeUploadSearch()}
-                  className="pl-9"
-                  autoFocus
-                />
-              </div>
-              <Button size="sm" onClick={handleBarcodeUploadSearch}>Найти</Button>
-            </div>
 
-            {uploadTargetItem && (
-              <div className="rounded-lg border border-primary/30 bg-primary/5 p-4 space-y-3">
-                <div className="flex items-center gap-2">
-                  <Package className="w-4 h-4 text-primary" />
-                  <span className="font-medium text-sm">{uploadTargetItem.upd}</span>
-                  <span className="text-muted-foreground text-sm">— {uploadTargetItem.name}</span>
-                </div>
-                <div className="text-xs text-muted-foreground space-y-1">
-                  <div>Артикул: {uploadTargetItem.article} | Бренд: {uploadTargetItem.brand}</div>
-                  <div>Штрих-код: {uploadTargetItem.barcode} | Кол-во: {uploadTargetItem.qty} шт.</div>
-                </div>
-                {uploadTargetItem.uploadedFileUrl ? (
-                  <div className="flex items-center gap-2 text-sm text-success">
-                    <CheckCircle2 className="w-4 h-4" />
-                    Файл уже загружен: {uploadTargetItem.uploadedFileName}
-                  </div>
-                ) : null}
-                <label>
-                  <input
-                    type="file"
-                    className="hidden"
-                    accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (file) handleBarcodeUploadFile(file);
-                      e.target.value = "";
-                    }}
-                  />
-                  <Button variant="default" size="sm" asChild className="w-full">
-                    <span>
-                      <Upload className="w-4 h-4 mr-2" />
-                      {uploadTargetItem.uploadedFileUrl ? "Заменить файл" : "Загрузить файл УПД"}
-                    </span>
-                  </Button>
-                </label>
-              </div>
-            )}
+          {/* Tab switcher */}
+          <div className="flex gap-2 border-b border-border pb-2">
+            <Button
+              variant={uploadTab === "file" ? "default" : "ghost"}
+              size="sm"
+              onClick={() => { setUploadTab("file"); setUploadTargetItem(null); setUploadBarcode(""); }}
+            >
+              <FileText className="w-4 h-4 mr-1" />
+              XML файл
+            </Button>
+            <Button
+              variant={uploadTab === "barcode" ? "default" : "ghost"}
+              size="sm"
+              onClick={() => { setUploadTab("barcode"); setUploadTargetItem(null); }}
+            >
+              <ScanLine className="w-4 h-4 mr-1" />
+              Штрих-код
+            </Button>
           </div>
+
+          {uploadTab === "file" && (
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Выберите XML-файл универсального передаточного документа. Система автоматически считает данные и добавит УПД в Сток.
+              </p>
+              <input
+                ref={xmlInputRef}
+                type="file"
+                className="hidden"
+                accept=".xml"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) handleXMLUpload(file);
+                  e.target.value = "";
+                }}
+              />
+              <Button
+                variant="outline"
+                className="w-full h-24 border-dashed border-2 flex flex-col gap-2"
+                onClick={() => xmlInputRef.current?.click()}
+              >
+                <Upload className="w-6 h-6 text-muted-foreground" />
+                <span className="text-sm text-muted-foreground">Нажмите для выбора XML файла</span>
+              </Button>
+            </div>
+          )}
+
+          {uploadTab === "barcode" && (
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Отсканируйте штрих-код с печатного УПД или введите его вручную.
+              </p>
+              <div className="flex items-center gap-2">
+                <div className="relative flex-1">
+                  <ScanLine className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Штрих-код или номер УПД..."
+                    value={uploadBarcode}
+                    onChange={(e) => setUploadBarcode(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleBarcodeUploadSearch()}
+                    className="pl-9"
+                    autoFocus
+                  />
+                </div>
+                <Button size="sm" onClick={handleBarcodeUploadSearch}>Найти</Button>
+              </div>
+
+              {uploadTargetItem && (
+                <div className="rounded-lg border border-primary/30 bg-primary/5 p-4 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <Package className="w-4 h-4 text-primary" />
+                    <span className="font-medium text-sm">{uploadTargetItem.upd}</span>
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    Штрих-код: {uploadTargetItem.barcode}
+                  </div>
+                  <Button variant="default" size="sm" className="w-full" onClick={handleBarcodeAddToStock}>
+                    <CheckCircle2 className="w-4 h-4 mr-2" />
+                    Добавить в Сток
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>
