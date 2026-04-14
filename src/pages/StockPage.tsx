@@ -222,8 +222,100 @@ const StockPage = () => {
     uploadedFileUrl: item.uploadedFileUrl,
   });
 
+  const parseXMLToStockItem = (xmlText: string): StockItem | null => {
+    try {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(xmlText, "text/xml");
+      
+      const errorNode = doc.querySelector("parsererror");
+      if (errorNode) {
+        toast.error("Ошибка разбора XML файла");
+        return null;
+      }
+
+      // Try to extract UPD number from common XML structures
+      const docNumber = doc.querySelector("Документ, Document, СвСчФакт, ИдДок")?.getAttribute("НомерСчФ") 
+        || doc.querySelector("Документ, Document")?.getAttribute("Номер")
+        || doc.querySelector("НомерДок, DocNumber")?.textContent
+        || doc.querySelector("[НомерСчФ]")?.getAttribute("НомерСчФ")
+        || `УПД-${String(Date.now()).slice(-5)}`;
+
+      const updNumber = docNumber.startsWith("УПД") ? docNumber : `УПД-${docNumber}`;
+
+      const dateAttr = doc.querySelector("Документ, Document, СвСчФакт")?.getAttribute("ДатаСчФ")
+        || doc.querySelector("ДатаДок, DocDate")?.textContent
+        || new Date().toLocaleDateString("ru-RU");
+
+      const sellerName = doc.querySelector("СвПрод, Продавец, Seller")?.getAttribute("НаимОрг")
+        || doc.querySelector("НаимПрод, SellerName")?.textContent
+        || "Поставщик";
+
+      // Parse items from table rows
+      const itemNodes = doc.querySelectorAll("СведТов, ТоварнаяСтрока, Item, Товар, ТаблСчФакт > *");
+      const items: StockItem["items"] = [];
+      
+      itemNodes.forEach((node, idx) => {
+        const name = node.getAttribute("НаимТов") || node.querySelector("Наименование, Name")?.textContent || `Товар ${idx + 1}`;
+        const article = node.getAttribute("Артикул") || node.querySelector("Артикул, Article, КодТов")?.textContent || `ART-${idx + 1}`;
+        const qty = parseInt(node.getAttribute("КолТов") || node.querySelector("Количество, Qty, Кол")?.textContent || "1", 10);
+        const price = parseFloat(node.getAttribute("ЦенаТов") || node.querySelector("Цена, Price")?.textContent || "0");
+        const barcode = node.getAttribute("ШтрихКод") || node.querySelector("ШтрихКод, Barcode")?.textContent || `${Date.now()}-${idx}`;
+        
+        items.push({ article, name, qty, barcode, price });
+      });
+
+      if (items.length === 0) {
+        items.push({ article: "N/A", name: "Товар из УПД", qty: 1, barcode: String(Date.now()), price: 0 });
+      }
+
+      const totalQty = items.reduce((s, i) => s + i.qty, 0);
+
+      return {
+        id: Date.now(),
+        upd: updNumber,
+        name: items[0]?.name || "Товар",
+        article: items[0]?.article || "N/A",
+        qty: totalQty,
+        brand: sellerName,
+        date: dateAttr,
+        barcode: items[0]?.barcode || String(Date.now()),
+        items,
+        uploadedFileUrl: null,
+        uploadedFileName: null,
+      };
+    } catch {
+      toast.error("Не удалось разобрать XML файл");
+      return null;
+    }
+  };
+
+  const handleXMLUpload = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const text = e.target?.result as string;
+      const item = parseXMLToStockItem(text);
+      if (!item) return;
+
+      // Check for duplicates
+      const exists = stockItems.some(
+        (s) => s.upd.toLowerCase() === item.upd.toLowerCase()
+      );
+      if (exists) {
+        toast.error(`УПД ${item.upd} уже существует в списке`);
+        return;
+      }
+
+      setStockItems((prev) => [item, ...prev]);
+      toast.success(`УПД ${item.upd} успешно добавлен в Сток`);
+      setUploadDialogOpen(false);
+    };
+    reader.readAsText(file);
+  };
+
   const handleBarcodeUploadSearch = () => {
     if (!uploadBarcode.trim()) return;
+    
+    // Check if already exists
     const found = stockItems.find(
       (item) =>
         item.barcode === uploadBarcode.trim() ||
@@ -231,12 +323,26 @@ const StockPage = () => {
         item.items.some((i) => i.barcode === uploadBarcode.trim())
     );
     if (found) {
-      setUploadTargetItem(found);
-      toast.success(`Найден: ${found.upd} — ${found.name}`);
-    } else {
+      toast.error(`УПД ${found.upd} уже существует в списке`);
       setUploadTargetItem(null);
-      toast.error("Товар с таким штрих-кодом не найден");
+      return;
     }
+
+    // Create new item from barcode
+    const newItem: StockItem = {
+      id: Date.now(),
+      upd: `УПД-${uploadBarcode.trim().slice(-5)}`,
+      name: "Товар (по штрих-коду)",
+      article: "N/A",
+      qty: 0,
+      brand: "Не указан",
+      date: new Date().toLocaleDateString("ru-RU"),
+      barcode: uploadBarcode.trim(),
+      items: [],
+      uploadedFileUrl: null,
+      uploadedFileName: null,
+    };
+    setUploadTargetItem(newItem);
   };
 
   const handleBarcodeUploadFile = (file: File) => {
