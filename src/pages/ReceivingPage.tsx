@@ -13,12 +13,13 @@ import { toast } from "sonner";
 import * as XLSX from "xlsx";
 import { useRoles } from "@/contexts/RoleContext";
 
-type OrderStatus = "new" | "in_progress" | "completed";
+type OrderStatus = "new" | "in_progress" | "completed" | "partially_accepted";
 
 const statusMap: Record<OrderStatus, { label: string; type: "success" | "warning" | "error" | "default" | "primary" }> = {
   new: { label: "Новый", type: "default" },
   in_progress: { label: "В работе", type: "primary" },
   completed: { label: "Завершён", type: "success" },
+  partially_accepted: { label: "Частично принят", type: "warning" },
 };
 
 interface LabelItem {
@@ -122,6 +123,15 @@ const initialOrders: Order[] = [
     labels: generateLabels(11, "UrbanBag").map(l => ({ ...l, scanned: true, boxId: "box-5" })),
     boxes: [{ id: "box-5", number: 1, updNumber: "УПЛ-20260331-001", items: [], sealed: true }],
   },
+  {
+    id: 6, number: "ORD-2046", marketplace: "Wildberries", brand: "RunStyle", ip: "ИП Иванов А.А.",
+    totalLabels: 20, scannedCount: 14, status: "partially_accepted",
+    employees: ["Петров К.М."], date: "30.03.2026",
+    labels: generateLabels(20, "RunStyle").map((l, i) => i < 14
+      ? { ...l, scanned: true, boxId: "box-6" }
+      : { ...l, flagged: true }),
+    boxes: [{ id: "box-6", number: 1, updNumber: "УПЛ-20260330-001", items: [], sealed: true }],
+  },
 ];
 
 const ReceivingPage = () => {
@@ -156,7 +166,8 @@ const ReceivingPage = () => {
     const matchSearch = o.number.toLowerCase().includes(search.toLowerCase()) || o.brand.toLowerCase().includes(search.toLowerCase());
     const matchMp = mpFilter === "all" || o.marketplace === mpFilter;
     const matchStatus = statusFilter === "all" || o.status === statusFilter;
-    const matchTab = tab === "active" ? o.status !== "completed" : o.status === "completed";
+    const archived = ["completed", "partially_accepted"];
+    const matchTab = tab === "active" ? !archived.includes(o.status) : archived.includes(o.status);
     return matchSearch && matchMp && matchStatus && matchTab;
   });
 
@@ -255,15 +266,21 @@ const ReceivingPage = () => {
     toast.success(`Коробка №${num} добавлена`);
   };
 
-  // --- Finish: просто завершить, без выбора статуса ---
+  // --- Finish: статус определяется автоматически по полноте приёмки ---
   const finishReceiving = () => {
     if (!activeOrder) return;
+    const totalScanned = activeOrder.labels.filter(l => l.scanned).length;
+    const totalLabels = activeOrder.labels.length;
+    const isFull = totalScanned === totalLabels;
     updateOrder(activeOrder.id, o => ({
       ...o,
-      status: "completed",
+      status: isFull ? "completed" : "partially_accepted",
+      labels: o.labels.map(l => ({ ...l, flagged: !l.scanned })),
       boxes: o.boxes.map(b => ({ ...b, sealed: true })),
     }));
-    toast.success("Заказ завершён. Коробки переданы в Сток.");
+    toast.success(isFull
+      ? "Заказ завершён. Коробки переданы в Сток."
+      : "Заказ частично принят. Коробки переданы в Сток.");
     setActiveOrderId(null);
   };
 
@@ -688,7 +705,7 @@ const ReceivingPage = () => {
                             <Play className="w-4 h-4" />
                           </Button>
                         )}
-                        {order.status === "completed" && canDownloadReport && (
+                        {(order.status === "completed" || order.status === "partially_accepted") && canDownloadReport && (
                           <Button variant="ghost" size="sm" title="Выгрузить отчёт" onClick={() => exportReport(order)}>
                             <Download className="w-4 h-4" />
                           </Button>
