@@ -16,9 +16,7 @@ import {
 import {
   Collapsible, CollapsibleContent, CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import {
-  Search, ScanLine, FileText, Download, Package, CheckCircle2, XCircle, AlertTriangle, Upload, ChevronDown, ChevronRight, Box,
-} from "lucide-react";
+import { Search, ScanLine, FileText, Download, Package, CircleCheck as CheckCircle2, Circle as XCircle, TriangleAlert as AlertTriangle, Upload, ChevronDown, ChevronRight, Box } from "lucide-react";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
 
@@ -31,7 +29,7 @@ interface SKUItem {
   price?: number;
   brand: string;
   size?: string;
-  chz?: string; // Честный знак
+  chzCodes?: string[]; // Честный знак — per-unit identifiers, length must equal qty
   dateReceived: string;
   marketplace?: string;
 }
@@ -58,7 +56,7 @@ const mockBoxes: StockBox[] = [
     ip: "ИП Иванов А.А.", marketplace: "Wildberries",
     items: [
       { article: "WB-12345", articleSeller: "FB-001-S", name: "Футболка белая S", qty: 40, barcode: "4607012345671-01", price: 850, brand: "BasicWear", size: "S", dateReceived: "02.04.2026", marketplace: "Wildberries" },
-      { article: "WB-12346", articleSeller: "FB-001-M", name: "Футболка белая M", qty: 50, barcode: "4607012345671-02", price: 850, brand: "BasicWear", size: "M", chz: "010464007456781921abc123", dateReceived: "02.04.2026", marketplace: "Wildberries" },
+      { article: "WB-12346", articleSeller: "FB-001-M", name: "Футболка белая M", qty: 3, barcode: "4607012345671-02", price: 850, brand: "BasicWear", size: "M", chzCodes: ["010464007456781921CHZ001", "010464007456781921CHZ002", "010464007456781921CHZ003"], dateReceived: "02.04.2026", marketplace: "Wildberries" },
       { article: "WB-12347", articleSeller: "FB-001-L", name: "Футболка белая L", qty: 30, barcode: "4607012345671-03", price: 850, brand: "BasicWear", size: "L", dateReceived: "02.04.2026", marketplace: "Wildberries" },
     ],
   },
