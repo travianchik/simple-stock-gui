@@ -5,6 +5,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { RoleProvider } from "./contexts/RoleContext";
 import { StockProvider } from "./contexts/StockContext";
+import { NotificationsProvider } from "./contexts/NotificationsContext";
 import AppLayout from "./components/AppLayout";
 import StockPage from "./pages/StockPage";
 import ReceivingPage from "./pages/ReceivingPage";
@@ -23,6 +24,7 @@ const App = () => (
       <BrowserRouter>
         <RoleProvider>
           <StockProvider>
+          <NotificationsProvider>
           <Routes>
             <Route element={<AppLayout />}>
               <Route path="/" element={<StockPage />} />
@@ -33,6 +35,7 @@ const App = () => (
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>
+          </NotificationsProvider>
           </StockProvider>
         </RoleProvider>
       </BrowserRouter>

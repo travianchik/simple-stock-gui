@@ -13,6 +13,8 @@ import { toast } from "sonner";
 import * as XLSX from "xlsx";
 import { useRoles } from "@/contexts/RoleContext";
 import { useStock, StockBox, SKUItem } from "@/contexts/StockContext";
+import { useNotifications } from "@/contexts/NotificationsContext";
+import { Bell } from "lucide-react";
 
 type OrderStatus = "new" | "in_progress" | "completed" | "partially_accepted";
 
@@ -138,6 +140,8 @@ const initialOrders: Order[] = [
 const ReceivingPage = () => {
   const { currentUser, updateUser } = useRoles();
   const { addBoxes, uploadedOrderIds, markOrderUploaded } = useStock();
+  const { notifyAssignment, unseenFor, markSeen, markAllSeenFor } = useNotifications();
+  const myUnseen = currentUser.role === "employee" ? unseenFor(currentUser.name) : [];
   const canCreateOrder = currentUser.role === "warehouse_head" || currentUser.role === "receiving_manager";
   const canDownloadReport = canCreateOrder;
   const canUploadToStock = canCreateOrder;
@@ -171,7 +175,8 @@ const ReceivingPage = () => {
     const matchStatus = statusFilter === "all" || o.status === statusFilter;
     const archived = ["completed", "partially_accepted"];
     const matchTab = tab === "active" ? !archived.includes(o.status) : archived.includes(o.status);
-    return matchSearch && matchMp && matchStatus && matchTab;
+    const matchRole = currentUser.role !== "employee" || o.employees.includes(currentUser.name);
+    return matchSearch && matchMp && matchStatus && matchTab && matchRole;
   });
 
   // --- Assign employees ---
@@ -183,16 +188,38 @@ const ReceivingPage = () => {
 
   const confirmAssign = () => {
     if (assignDialog === null) return;
+    const order = orders.find(o => o.id === assignDialog);
+    const previouslyAssigned = new Set(order?.employees || []);
+    const newlyAssigned = selectedEmployees.filter(e => !previouslyAssigned.has(e));
     updateOrder(assignDialog, o => ({ ...o, employees: selectedEmployees }));
+    if (order) {
+      newlyAssigned.forEach(empName => {
+        notifyAssignment({
+          employeeName: empName,
+          orderId: order.id,
+          orderNumber: order.number,
+          orderBrand: order.brand,
+          orderMarketplace: order.marketplace,
+        });
+      });
+    }
     setAssignDialog(null);
-    toast.success("Сотрудники назначены");
+    toast.success(newlyAssigned.length > 0
+      ? `Сотрудники назначены. Уведомления отправлены (${newlyAssigned.length})`
+      : "Сотрудники назначены");
   };
 
   // --- Start receiving ---
   const startReceiving = (orderId: number) => {
     const order = orders.find(o => o.id === orderId);
-    if (!order || order.employees.length === 0) {
+    if (!order) return;
+    // Менеджер без назначенных сотрудников — сначала назначить
+    if (order.employees.length === 0 && canCreateOrder) {
       openAssignDialog(orderId);
+      return;
+    }
+    if (order.employees.length === 0) {
+      toast.error("На заказ не назначены сотрудники");
       return;
     }
     updateOrder(orderId, o => ({
@@ -522,22 +549,41 @@ const ReceivingPage = () => {
           )}
 
           {/* Action bar */}
-          <div className="flex items-center gap-2 flex-wrap">
-            <Button onClick={simulateScan} disabled={totalScanned >= totalLabels}>
-              <ScanBarcode className="w-4 h-4 mr-1" /> Сканировать
-            </Button>
-            {openBox && (
-              <Button variant="outline" onClick={sealBoxAndPrintPackingList} disabled={scannedInOpenBox === 0}>
-                <Printer className="w-4 h-4 mr-1" /> Напечатать Упаковочный лист (коробка №{openBox.number})
+          {activeOrder.status === "new" ? (
+            <div className="flex items-center gap-3 p-4 rounded-lg border border-primary/30 bg-primary/5">
+              <Bell className="w-5 h-5 text-primary" />
+              <div className="flex-1 text-sm">
+                <p className="font-medium">Заказ назначен на вас</p>
+                <p className="text-muted-foreground text-xs">
+                  Нажмите «Начать приёмку», чтобы приступить к работе. Менеджер увидит, что вы начали.
+                </p>
+              </div>
+              <Button onClick={() => startReceiving(activeOrder.id)}>
+                <Play className="w-4 h-4 mr-1" /> Начать приёмку
               </Button>
-            )}
-            <Button variant="outline" onClick={addNewBox}>
-              <Plus className="w-4 h-4 mr-1" /> Новая коробка
-            </Button>
-            <Button variant="default" className="ml-auto" onClick={finishReceiving}>
-              <CheckCircle className="w-4 h-4 mr-1" /> Завершить приём
-            </Button>
-          </div>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 flex-wrap">
+              <Button onClick={simulateScan} disabled={totalScanned >= totalLabels || activeOrder.status !== "in_progress"}>
+                <ScanBarcode className="w-4 h-4 mr-1" /> Сканировать
+              </Button>
+              {openBox && activeOrder.status === "in_progress" && (
+                <Button variant="outline" onClick={sealBoxAndPrintPackingList} disabled={scannedInOpenBox === 0}>
+                  <Printer className="w-4 h-4 mr-1" /> Напечатать Упаковочный лист (коробка №{openBox.number})
+                </Button>
+              )}
+              {activeOrder.status === "in_progress" && (
+                <Button variant="outline" onClick={addNewBox}>
+                  <Plus className="w-4 h-4 mr-1" /> Новая коробка
+                </Button>
+              )}
+              {activeOrder.status === "in_progress" && (
+                <Button variant="default" className="ml-auto" onClick={finishReceiving}>
+                  <CheckCircle className="w-4 h-4 mr-1" /> Завершить приём
+                </Button>
+              )}
+            </div>
+          )}
 
           {/* Boxes summary */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -636,6 +682,16 @@ const ReceivingPage = () => {
         actions={
           <div className="flex items-center gap-2">
             {currentUser.role === "employee" && (
+              <div className="relative flex items-center gap-1 px-3 py-1.5 rounded-md border border-border bg-muted/30 text-xs">
+                <Bell className="w-3.5 h-3.5 text-muted-foreground" />
+                <span className="text-muted-foreground">Уведомлений:</span>
+                <span className="font-medium">{myUnseen.length}</span>
+                {myUnseen.length > 0 && (
+                  <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-destructive" />
+                )}
+              </div>
+            )}
+            {currentUser.role === "employee" && (
               <div className="flex items-center gap-1 px-3 py-1.5 rounded-md border border-border bg-muted/30 text-xs">
                 <ScanBarcode className="w-3.5 h-3.5 text-muted-foreground" />
                 <span className="text-muted-foreground">Сканер:</span>
@@ -657,6 +713,42 @@ const ReceivingPage = () => {
       />
 
       <div className="p-6 space-y-4 flex-1 overflow-auto">
+        {/* Notifications (для сотрудника) */}
+        {currentUser.role === "employee" && myUnseen.length > 0 && (
+          <div className="rounded-lg border border-primary/40 bg-primary/5 p-4">
+            <div className="flex items-start gap-3">
+              <Bell className="w-5 h-5 text-primary mt-0.5" />
+              <div className="flex-1">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="font-medium text-sm">
+                    Новые назначения: {myUnseen.length}
+                  </p>
+                  <Button variant="ghost" size="sm" onClick={() => markAllSeenFor(currentUser.name)}>
+                    Прочитать все
+                  </Button>
+                </div>
+                <ul className="space-y-1.5">
+                  {myUnseen.map(n => (
+                    <li key={n.id} className="flex items-center justify-between text-sm">
+                      <span>
+                        <span className="font-medium">{n.orderNumber}</span>
+                        <span className="text-muted-foreground"> · {n.orderBrand} · {n.orderMarketplace}</span>
+                      </span>
+                      <Button variant="link" size="sm" className="h-6"
+                        onClick={() => {
+                          markSeen(n.id);
+                          setActiveOrderId(n.orderId);
+                        }}>
+                        Открыть
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Tabs */}
         <Tabs value={tab} onValueChange={setTab}>
           <TabsList>
@@ -747,6 +839,11 @@ const ReceivingPage = () => {
                               <Play className="w-4 h-4" />
                             </Button>
                           </>
+                        )}
+                        {order.status === "new" && currentUser.role === "employee" && order.employees.includes(currentUser.name) && (
+                          <Button variant="ghost" size="sm" title="Открыть заказ" onClick={() => setActiveOrderId(order.id)}>
+                            <Play className="w-4 h-4" />
+                          </Button>
                         )}
                         {order.status === "in_progress" && (
                           <Button variant="ghost" size="sm" title="Продолжить приём" onClick={() => setActiveOrderId(order.id)}>
