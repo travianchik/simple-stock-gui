@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from "react";
+import { useState, useMemo } from "react";
 import PageHeader from "@/components/PageHeader";
 import StatusBadge from "@/components/StatusBadge";
 import { Button } from "@/components/ui/button";
@@ -16,9 +16,11 @@ import {
 import {
   Collapsible, CollapsibleContent, CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { Search, ScanLine, FileText, Download, Package, CircleCheck as CheckCircle2, Circle as XCircle, TriangleAlert as AlertTriangle, Upload, ChevronDown, ChevronRight, Box } from "lucide-react";
+import { Search, ScanLine, Download, Package, CircleCheck as CheckCircle2, Circle as XCircle, TriangleAlert as AlertTriangle, Plus, ChevronDown, ChevronRight, Box } from "lucide-react";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
+
+type SKUKind = "unit" | "set";
 
 interface SKUItem {
   article: string;
@@ -29,9 +31,11 @@ interface SKUItem {
   price?: number;
   brand: string;
   size?: string;
-  chzCodes?: string[]; // Честный знак — per-unit identifiers, length must equal qty
+  chzCodes?: string[]; // Честный знак — per-unit identifiers
   dateReceived: string;
   marketplace?: string;
+  kind: SKUKind; // единица (1 шт) или набор (несколько в упаковке)
+  setSize?: number; // если kind === 'set', сколько товаров внутри
 }
 
 interface StockBox {
@@ -51,52 +55,52 @@ interface StockBox {
 
 const mockBoxes: StockBox[] = [
   {
-    id: 1, boxNumber: "КРБ-001", upd: "УПД-00142", qty: 120,
+    id: 1, boxNumber: "КРБ-001", upd: "УПЛ-00142", qty: 73,
     brand: "BasicWear", dateReceived: "02.04.2026", status: "on_stock",
     ip: "ИП Иванов А.А.", marketplace: "Wildberries",
     items: [
-      { article: "WB-12345", articleSeller: "FB-001-S", name: "Футболка белая S", qty: 40, barcode: "4607012345671-01", price: 850, brand: "BasicWear", size: "S", dateReceived: "02.04.2026", marketplace: "Wildberries" },
-      { article: "WB-12346", articleSeller: "FB-001-M", name: "Футболка белая M", qty: 3, barcode: "4607012345671-02", price: 850, brand: "BasicWear", size: "M", chzCodes: ["010464007456781921CHZ001", "010464007456781921CHZ002", "010464007456781921CHZ003"], dateReceived: "02.04.2026", marketplace: "Wildberries" },
-      { article: "WB-12347", articleSeller: "FB-001-L", name: "Футболка белая L", qty: 30, barcode: "4607012345671-03", price: 850, brand: "BasicWear", size: "L", dateReceived: "02.04.2026", marketplace: "Wildberries" },
+      { article: "WB-12345", articleSeller: "FB-001-S", name: "Футболка белая S", qty: 40, barcode: "4607012345671-01", price: 850, brand: "BasicWear", size: "S", dateReceived: "02.04.2026", marketplace: "Wildberries", kind: "unit" },
+      { article: "WB-12346", articleSeller: "FB-001-M", name: "Футболка белая M", qty: 3, barcode: "4607012345671-02", price: 850, brand: "BasicWear", size: "M", chzCodes: ["010464007456781921CHZ001", "010464007456781921CHZ002", "010464007456781921CHZ003"], dateReceived: "02.04.2026", marketplace: "Wildberries", kind: "unit" },
+      { article: "WB-12347", articleSeller: "FB-001-L", name: "Футболка белая L", qty: 30, barcode: "4607012345671-03", price: 850, brand: "BasicWear", size: "L", dateReceived: "02.04.2026", marketplace: "Wildberries", kind: "unit" },
     ],
   },
   {
-    id: 2, boxNumber: "КРБ-002", upd: "УПД-00143", qty: 80,
+    id: 2, boxNumber: "КРБ-002", upd: "УПЛ-00143", qty: 53,
     brand: "DenimPro", dateReceived: "01.04.2026", status: "on_stock",
     ip: "ИП Петров Б.Б.", marketplace: "Ozon",
     items: [
-      { article: "OZ-99001", articleSeller: "JS-045-30", name: "Джинсы slim 30", qty: 30, barcode: "4607012345672-01", price: 3200, brand: "DenimPro", size: "30", dateReceived: "01.04.2026", marketplace: "Ozon" },
-      { article: "OZ-99002", articleSeller: "JS-045-32", name: "Джинсы slim 32", qty: 3, barcode: "4607012345672-02", price: 3200, brand: "DenimPro", size: "32", chzCodes: ["010464007456781921YXZ001", "010464007456781921YXZ002", "010464007456781921YXZ003"], dateReceived: "01.04.2026", marketplace: "Ozon" },
-      { article: "OZ-99003", articleSeller: "JS-045-34", name: "Джинсы slim 34", qty: 20, barcode: "4607012345672-03", price: 3200, brand: "DenimPro", size: "34", dateReceived: "01.04.2026", marketplace: "Ozon" },
+      { article: "OZ-99001", articleSeller: "JS-045-30", name: "Джинсы slim 30", qty: 30, barcode: "4607012345672-01", price: 3200, brand: "DenimPro", size: "30", dateReceived: "01.04.2026", marketplace: "Ozon", kind: "unit" },
+      { article: "OZ-99002", articleSeller: "JS-045-32", name: "Джинсы slim 32", qty: 3, barcode: "4607012345672-02", price: 3200, brand: "DenimPro", size: "32", chzCodes: ["010464007456781921YXZ001", "010464007456781921YXZ002", "010464007456781921YXZ003"], dateReceived: "01.04.2026", marketplace: "Ozon", kind: "unit" },
+      { article: "OZ-99003", articleSeller: "JS-045-34", name: "Джинсы slim 34", qty: 20, barcode: "4607012345672-03", price: 3200, brand: "DenimPro", size: "34", dateReceived: "01.04.2026", marketplace: "Ozon", kind: "unit" },
     ],
   },
   {
-    id: 3, boxNumber: "КРБ-003", upd: "УПД-00144", qty: 45,
+    id: 3, boxNumber: "КРБ-003", upd: "УПЛ-00144", qty: 45,
     brand: "RunStyle", dateReceived: "31.03.2026", status: "on_stock",
     ip: "ИП Иванов А.А.", marketplace: "Wildberries",
     items: [
-      { article: "WB-55001", articleSeller: "KS-112-41", name: "Кроссовки 41", qty: 15, barcode: "4607012345673-01", price: 5600, brand: "RunStyle", size: "41", dateReceived: "31.03.2026", marketplace: "Wildberries" },
-      { article: "WB-55002", articleSeller: "KS-112-42", name: "Кроссовки 42", qty: 15, barcode: "4607012345673-02", price: 5600, brand: "RunStyle", size: "42", dateReceived: "31.03.2026", marketplace: "Wildberries" },
-      { article: "WB-55003", articleSeller: "KS-112-43", name: "Кроссовки 43", qty: 15, barcode: "4607012345673-03", price: 5600, brand: "RunStyle", size: "43", dateReceived: "31.03.2026", marketplace: "Wildberries" },
+      { article: "WB-55001", articleSeller: "KS-112-41", name: "Кроссовки 41", qty: 15, barcode: "4607012345673-01", price: 5600, brand: "RunStyle", size: "41", dateReceived: "31.03.2026", marketplace: "Wildberries", kind: "unit" },
+      { article: "WB-55002", articleSeller: "KS-112-42", name: "Кроссовки 42", qty: 15, barcode: "4607012345673-02", price: 5600, brand: "RunStyle", size: "42", dateReceived: "31.03.2026", marketplace: "Wildberries", kind: "unit" },
+      { article: "WB-55003", articleSeller: "KS-112-43", name: "Кроссовки 43", qty: 15, barcode: "4607012345673-03", price: 5600, brand: "RunStyle", size: "43", dateReceived: "31.03.2026", marketplace: "Wildberries", kind: "unit" },
     ],
   },
   {
-    id: 4, boxNumber: "КРБ-004", upd: "УПД-00145", qty: 200,
+    id: 4, boxNumber: "КРБ-004", upd: "УПЛ-00145", qty: 50,
     brand: "BasicWear", dateReceived: "30.03.2026", status: "on_stock",
     ip: "ИП Сидоров В.В.", marketplace: "Ozon",
     items: [
-      { article: "OZ-77001", articleSeller: "HO-023-S", name: "Худи оверсайз S", qty: 60, barcode: "4607012345674-01", price: 2400, brand: "BasicWear", size: "S", dateReceived: "30.03.2026", marketplace: "Ozon" },
-      { article: "OZ-77002", articleSeller: "HO-023-M", name: "Худи оверсайз M", qty: 80, barcode: "4607012345674-02", price: 2400, brand: "BasicWear", size: "M", dateReceived: "30.03.2026", marketplace: "Ozon" },
-      { article: "OZ-77003", articleSeller: "HO-023-L", name: "Худи оверсайз L", qty: 60, barcode: "4607012345674-03", price: 2400, brand: "BasicWear", size: "L", dateReceived: "30.03.2026", marketplace: "Ozon" },
+      { article: "OZ-77001", articleSeller: "HO-023-S", name: "Худи оверсайз S", qty: 20, barcode: "4607012345674-01", price: 2400, brand: "BasicWear", size: "S", dateReceived: "30.03.2026", marketplace: "Ozon", kind: "unit" },
+      { article: "OZ-77002", articleSeller: "NB-BX-5", name: "Трусы набор 5шт", qty: 15, barcode: "4607012345674-02", price: 1200, brand: "BasicWear", size: "L", dateReceived: "30.03.2026", marketplace: "Ozon", kind: "set", setSize: 5 },
+      { article: "OZ-77003", articleSeller: "HO-023-L", name: "Худи оверсайз L", qty: 15, barcode: "4607012345674-03", price: 2400, brand: "BasicWear", size: "L", dateReceived: "30.03.2026", marketplace: "Ozon", kind: "unit" },
     ],
   },
   {
-    id: 5, boxNumber: "КРБ-005", upd: "УПД-00146", qty: 60,
+    id: 5, boxNumber: "КРБ-005", upd: "УПЛ-00146", qty: 60,
     brand: "UrbanBag", dateReceived: "29.03.2026", status: "on_stock",
     ip: "ИП Петров Б.Б.", marketplace: "Wildberries",
     items: [
-      { article: "WB-33001", articleSeller: "RG-008-BK", name: "Рюкзак чёрный", qty: 30, barcode: "4607012345675-01", price: 4100, brand: "UrbanBag", size: "—", dateReceived: "29.03.2026", marketplace: "Wildberries" },
-      { article: "WB-33002", articleSeller: "RG-008-GR", name: "Рюкзак серый", qty: 30, barcode: "4607012345675-02", price: 4100, brand: "UrbanBag", size: "—", dateReceived: "29.03.2026", marketplace: "Wildberries" },
+      { article: "WB-33001", articleSeller: "RG-008-BK", name: "Рюкзак чёрный", qty: 30, barcode: "4607012345675-01", price: 4100, brand: "UrbanBag", size: "—", dateReceived: "29.03.2026", marketplace: "Wildberries", kind: "unit" },
+      { article: "WB-33002", articleSeller: "RG-008-GR", name: "Рюкзак серый", qty: 30, barcode: "4607012345675-02", price: 4100, brand: "UrbanBag", size: "—", dateReceived: "29.03.2026", marketplace: "Wildberries", kind: "unit" },
     ],
   },
 ];
@@ -115,11 +119,10 @@ const StockPage = () => {
   const [scanInput, setScanInput] = useState("");
   const [boxes, setBoxes] = useState<StockBox[]>(mockBoxes);
   const [expandedBoxes, setExpandedBoxes] = useState<Set<number>>(new Set());
-  const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
-  const [uploadTab, setUploadTab] = useState<"file" | "barcode">("file");
-  const [uploadBarcode, setUploadBarcode] = useState("");
-  const [uploadTargetItem, setUploadTargetItem] = useState<StockBox | null>(null);
-  const xmlInputRef = useRef<HTMLInputElement>(null);
+  const [addDialogOpen, setAddDialogOpen] = useState(false);
+  const [addBarcode, setAddBarcode] = useState("");
+  const [addPreview, setAddPreview] = useState<{ kind: "box" | "sku"; label: string; detail: string } | null>(null);
+  const [scannedSkuIds, setScannedSkuIds] = useState<Set<string>>(new Set());
 
   const brands = useMemo(() => [...new Set(boxes.map((b) => b.brand))], [boxes]);
   const ips = useMemo(() => [...new Set(boxes.map((b) => b.ip))], [boxes]);
@@ -176,23 +179,53 @@ const StockPage = () => {
     setScannedIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
   };
 
+  const handleScanSku = (id: string) => {
+    setScannedSkuIds((prev) => {
+      if (prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.add(id);
+      return next;
+    });
+  };
+
   const handleBarcodeScan = () => {
-    if (!scanInput.trim()) return;
-    const found = boxes.find(
-      (box) =>
-        box.upd.toLowerCase() === scanInput.trim().toLowerCase() ||
-        box.boxNumber.toLowerCase() === scanInput.trim().toLowerCase() ||
-        box.items.some((i) => i.barcode === scanInput.trim())
-    );
-    if (found) {
-      handleScan(found.id);
-      setScanInput("");
+    const code = scanInput.trim();
+    if (!code) return;
+    if (activeTab === "boxes") {
+      const found = boxes.find(
+        (box) =>
+          box.upd.toLowerCase() === code.toLowerCase() ||
+          box.boxNumber.toLowerCase() === code.toLowerCase() ||
+          box.items.some((i) => i.barcode === code)
+      );
+      if (found) { handleScan(found.id); setScanInput(""); }
+      else toast.error("Коробка не найдена");
+    } else {
+      // SKU mode: match by barcode OR ChZ code
+      let matchedId: string | null = null;
+      for (const box of boxes) {
+        for (const item of box.items) {
+          const baseId = `${box.id}:${item.barcode}`;
+          if (item.barcode === code) matchedId = baseId;
+          if (item.chzCodes?.some((c) => c === code)) matchedId = `${baseId}:${code}`;
+          if (matchedId) break;
+        }
+        if (matchedId) break;
+      }
+      if (matchedId) { handleScanSku(matchedId); setScanInput(""); }
+      else toast.error("Единица не найдена");
     }
   };
 
-  const startInventory = () => { setInventoryMode(true); setInventoryFinished(false); setScannedIds([]); };
+  const startInventory = () => {
+    setInventoryMode(true); setInventoryFinished(false);
+    setScannedIds([]); setScannedSkuIds(new Set());
+  };
   const finishInventory = () => { setInventoryFinished(true); };
-  const resetInventory = () => { setInventoryMode(false); setInventoryFinished(false); setScannedIds([]); };
+  const resetInventory = () => {
+    setInventoryMode(false); setInventoryFinished(false);
+    setScannedIds([]); setScannedSkuIds(new Set());
+  };
 
   const getBoxStatus = (box: StockBox) => {
     if (!inventoryMode) return { label: "На складе", type: "success" as const };
@@ -201,133 +234,127 @@ const StockPage = () => {
     return { label: "Не проверен", type: "default" as const };
   };
 
-  const notScannedCount = inventoryMode ? boxes.length - scannedIds.length : 0;
+  const getSkuStatus = (skuKey: string) => {
+    if (!inventoryMode) return { label: "На складе", type: "success" as const };
+    if (scannedSkuIds.has(skuKey)) return { label: "На складе", type: "success" as const };
+    if (inventoryFinished) return { label: "Нет на складе", type: "error" as const };
+    return { label: "Не проверен", type: "default" as const };
+  };
 
-  // Excel export
+  // Count of SKU rows (expanded per-unit when ChZ present)
+  const totalSkuRows = useMemo(() => {
+    let n = 0;
+    for (const box of boxes) for (const item of box.items) {
+      n += item.chzCodes?.length ? item.chzCodes.length : 1;
+    }
+    return n;
+  }, [boxes]);
+
+  const notScannedCount = inventoryMode
+    ? (activeTab === "boxes" ? boxes.length - scannedIds.length : totalSkuRows - scannedSkuIds.size)
+    : 0;
+  const scannedCount = inventoryMode
+    ? (activeTab === "boxes" ? scannedIds.length : scannedSkuIds.size)
+    : 0;
+
+  // Excel export — two sheets: Коробки и Единицы
   const exportExcel = () => {
-    const rows = boxes.flatMap((box) =>
+    const boxRows = boxes.map((box) => ({
+      "№ Короба": box.boxNumber,
+      "Упаковочный лист": box.upd,
+      "Количество": box.qty,
+      "Бренд": box.brand,
+      "ИП": box.ip,
+      "Маркетплейс": box.marketplace,
+      "Дата приёмки": box.dateReceived,
+      "Статус": box.status === "on_stock" ? "На складе" : box.status,
+    }));
+    const skuRows = boxes.flatMap((box) =>
       box.items.flatMap((item) => {
         if (item.chzCodes && item.chzCodes.length > 0) {
           return item.chzCodes.map((code) => ({
-            "№ Короба": box.boxNumber,
-            "УПД": box.upd,
             "Артикул WB/Ozon": item.article,
             "Артикул продавца": item.articleSeller,
-            "Наименование": item.name,
             "Бренд": item.brand,
             "Размер": item.size || "—",
-            "Остаток": 1,
+            "Количество": 1,
             "Баркод": item.barcode,
-            "ЧЗ": code,
+            "Честный знак": code,
+            "Тип": "единица",
             "Дата приёмки": item.dateReceived,
-            "Маркетплейс": item.marketplace || "",
-            "ИП": box.ip,
+            "№ Короба": box.boxNumber,
           }));
         }
         return [{
-          "№ Короба": box.boxNumber,
-          "УПД": box.upd,
           "Артикул WB/Ozon": item.article,
           "Артикул продавца": item.articleSeller,
-          "Наименование": item.name,
           "Бренд": item.brand,
           "Размер": item.size || "—",
-          "Остаток": item.qty,
+          "Количество": item.qty,
           "Баркод": item.barcode,
-          "ЧЗ": "",
+          "Честный знак": "",
+          "Тип": item.kind === "set" ? `набор (${item.setSize ?? ""} шт)` : "единица",
           "Дата приёмки": item.dateReceived,
-          "Маркетплейс": item.marketplace || "",
-          "ИП": box.ip,
+          "№ Короба": box.boxNumber,
         }];
       })
     );
-    const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Сток");
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(boxRows), "Коробки");
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(skuRows), "Единицы");
     XLSX.writeFile(wb, `Сток_${new Date().toLocaleDateString("ru-RU")}.xlsx`);
     toast.success("Excel файл скачан");
   };
 
-  // XML upload
-  const parseXMLToBox = (xmlText: string): StockBox | null => {
-    try {
-      const parser = new DOMParser();
-      const doc = parser.parseFromString(xmlText, "text/xml");
-      if (doc.querySelector("parsererror")) { toast.error("Ошибка разбора XML файла"); return null; }
+  // --- Добавить товар: сканирование штрихкода/ЧЗ ---
+  const handleAddLookup = () => {
+    const code = addBarcode.trim();
+    if (!code) return;
+    // Проверка на совпадение с упаковочным листом (коробка)
+    const existingBox = boxes.find((b) => b.upd.toLowerCase() === code.toLowerCase());
+    if (existingBox) {
+      setAddPreview({ kind: "box", label: `Коробка ${existingBox.boxNumber}`, detail: `${existingBox.upd} уже есть в Стоке` });
+      return;
+    }
+    // Предпросмотр: тип определяется по формату
+    if (code.startsWith("УПЛ") || code.startsWith("PACK")) {
+      setAddPreview({ kind: "box", label: `Новая коробка`, detail: `Упаковочный лист: ${code}` });
+    } else if (code.length > 20) {
+      setAddPreview({ kind: "sku", label: "Единица с Честным знаком", detail: `Код ЧЗ: ${code}` });
+    } else {
+      setAddPreview({ kind: "sku", label: "Единица", detail: `Штрих-код: ${code}` });
+    }
+  };
 
-      const docNumber = doc.querySelector("Документ, Document, СвСчФакт, ИдДок")?.getAttribute("НомерСчФ")
-        || doc.querySelector("Документ, Document")?.getAttribute("Номер")
-        || doc.querySelector("НомерДок, DocNumber")?.textContent
-        || doc.querySelector("[НомерСчФ]")?.getAttribute("НомерСчФ")
-        || `УПД-${String(Date.now()).slice(-5)}`;
-      const updNumber = docNumber.startsWith("УПД") ? docNumber : `УПД-${docNumber}`;
-
-      const dateAttr = doc.querySelector("Документ, Document, СвСчФакт")?.getAttribute("ДатаСчФ")
-        || doc.querySelector("ДатаДок, DocDate")?.textContent
-        || new Date().toLocaleDateString("ru-RU");
-
-      const sellerName = doc.querySelector("СвПрод, Продавец, Seller")?.getAttribute("НаимОрг")
-        || doc.querySelector("НаимПрод, SellerName")?.textContent
-        || "Поставщик";
-
-      const itemNodes = doc.querySelectorAll("СведТов, ТоварнаяСтрока, Item, Товар, ТаблСчФакт > *");
-      const items: SKUItem[] = [];
-      itemNodes.forEach((node, idx) => {
-        const name = node.getAttribute("НаимТов") || node.querySelector("Наименование, Name")?.textContent || `Товар ${idx + 1}`;
-        const articleSeller = node.getAttribute("Артикул") || node.querySelector("Артикул, Article, КодТов")?.textContent || `ART-${idx + 1}`;
-        const qty = parseInt(node.getAttribute("КолТов") || node.querySelector("Количество, Qty")?.textContent || "1", 10);
-        const price = parseFloat(node.getAttribute("ЦенаТов") || node.querySelector("Цена, Price")?.textContent || "0");
-        const barcode = node.getAttribute("ШтрихКод") || node.querySelector("ШтрихКод, Barcode")?.textContent || `${Date.now()}-${idx}`;
-        items.push({ article: articleSeller, articleSeller, name, qty, barcode, price, brand: sellerName, dateReceived: dateAttr });
-      });
-      if (items.length === 0) {
-        items.push({ article: "N/A", articleSeller: "N/A", name: "Товар из УПД", qty: 1, barcode: String(Date.now()), price: 0, brand: sellerName, dateReceived: dateAttr });
-      }
-
-      return {
-        id: Date.now(), boxNumber: `КРБ-${String(Date.now()).slice(-3)}`, upd: updNumber,
-        qty: items.reduce((s, i) => s + i.qty, 0), brand: sellerName, dateReceived: dateAttr,
-        status: "on_stock", ip: "Не указан", marketplace: "Не указан", items,
+  const handleAddConfirm = () => {
+    if (!addPreview) return;
+    const code = addBarcode.trim();
+    const today = new Date().toLocaleDateString("ru-RU");
+    if (addPreview.kind === "box") {
+      const newBox: StockBox = {
+        id: Date.now(), boxNumber: `КРБ-${String(Date.now()).slice(-3)}`,
+        upd: code, qty: 0, brand: "—", dateReceived: today,
+        status: "on_stock", ip: "—", marketplace: "—", items: [],
       };
-    } catch { toast.error("Не удалось разобрать XML"); return null; }
-  };
-
-  const handleXMLUpload = (file: File) => {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const item = parseXMLToBox(e.target?.result as string);
-      if (!item) return;
-      if (boxes.some((b) => b.upd.toLowerCase() === item.upd.toLowerCase())) {
-        toast.error(`УПД ${item.upd} уже существует в списке`);
-        return;
-      }
-      setBoxes((prev) => [item, ...prev]);
-      toast.success(`УПД ${item.upd} успешно добавлен`);
-      setUploadDialogOpen(false);
-    };
-    reader.readAsText(file);
-  };
-
-  const handleBarcodeUploadSearch = () => {
-    if (!uploadBarcode.trim()) return;
-    const found = boxes.find(
-      (b) => b.upd.toLowerCase() === uploadBarcode.trim().toLowerCase() ||
-        b.items.some((i) => i.barcode === uploadBarcode.trim())
-    );
-    if (found) { toast.error(`УПД ${found.upd} уже существует`); setUploadTargetItem(null); return; }
-    setUploadTargetItem({
-      id: Date.now(), boxNumber: `КРБ-${uploadBarcode.trim().slice(-3)}`,
-      upd: `УПД-${uploadBarcode.trim().slice(-5)}`, qty: 0, brand: "Не указан",
-      dateReceived: new Date().toLocaleDateString("ru-RU"), status: "on_stock",
-      ip: "Не указан", marketplace: "Не указан", items: [],
-    });
-  };
-
-  const handleBarcodeAddToStock = () => {
-    if (!uploadTargetItem) return;
-    setBoxes((prev) => [uploadTargetItem, ...prev]);
-    toast.success(`УПД ${uploadTargetItem.upd} добавлен`);
-    setUploadBarcode(""); setUploadTargetItem(null); setUploadDialogOpen(false);
+      setBoxes((prev) => [newBox, ...prev]);
+      toast.success(`Упаковочный лист ${code} добавлен`);
+    } else {
+      // единица — добавим как виртуальную коробку без упаковочного листа с одним товаром
+      const isChz = code.length > 20;
+      const newBox: StockBox = {
+        id: Date.now(), boxNumber: `БК-${String(Date.now()).slice(-3)}`,
+        upd: "—", qty: 1, brand: "—", dateReceived: today, status: "on_stock",
+        ip: "—", marketplace: "—",
+        items: [{
+          article: "—", articleSeller: "—", name: isChz ? "Единица (по ЧЗ)" : "Единица (по баркоду)",
+          qty: 1, barcode: isChz ? String(Date.now()) : code, brand: "—",
+          chzCodes: isChz ? [code] : undefined, dateReceived: today, kind: "unit",
+        }],
+      };
+      setBoxes((prev) => [newBox, ...prev]);
+      toast.success(`Единица добавлена`);
+    }
+    setAddBarcode(""); setAddPreview(null); setAddDialogOpen(false);
   };
 
   return (
@@ -341,9 +368,9 @@ const StockPage = () => {
               <Download className="w-4 h-4 mr-2" />
               Скачать Excel
             </Button>
-            <Button variant="outline" size="sm" onClick={() => { setUploadDialogOpen(true); setUploadTab("file"); }}>
-              <Upload className="w-4 h-4 mr-2" />
-              Загрузить УПД
+            <Button variant="outline" size="sm" onClick={() => setAddDialogOpen(true)}>
+              <Plus className="w-4 h-4 mr-2" />
+              Добавить товар
             </Button>
             {inventoryMode ? (
               inventoryFinished ? (
@@ -420,9 +447,11 @@ const StockPage = () => {
         {inventoryMode && !inventoryFinished && (
           <div className="flex items-center gap-3 p-4 rounded-lg border border-primary/30 bg-primary/5">
             <ScanLine className="w-5 h-5 text-primary" />
-            <span className="text-sm font-medium">Режим инвентаризации</span>
+            <span className="text-sm font-medium">
+              Инвентаризация: {activeTab === "boxes" ? "коробки" : "единицы"}
+            </span>
             <Input
-              placeholder="Сканируйте штрих-код..."
+              placeholder={activeTab === "boxes" ? "Сканируйте упаковочный лист..." : "Сканируйте штрих-код или ЧЗ..."}
               value={scanInput}
               onChange={(e) => setScanInput(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleBarcodeScan()}
@@ -431,7 +460,7 @@ const StockPage = () => {
             />
             <Button size="sm" variant="secondary" onClick={handleBarcodeScan}>Найти</Button>
             <div className="ml-auto flex items-center gap-3 text-sm">
-              <Badge variant="secondary" className="gap-1"><CheckCircle2 className="w-3 h-3" />{scannedIds.length} найдено</Badge>
+              <Badge variant="secondary" className="gap-1"><CheckCircle2 className="w-3 h-3" />{scannedCount} найдено</Badge>
               <Badge variant="destructive" className="gap-1"><XCircle className="w-3 h-3" />{notScannedCount} не проверено</Badge>
             </div>
           </div>
@@ -442,7 +471,7 @@ const StockPage = () => {
             <AlertTriangle className="w-5 h-5 text-warning" />
             <div className="text-sm">
               <span className="font-medium">Инвентаризация завершена. </span>
-              <span className="text-success font-medium">{scannedIds.length} на складе</span>
+              <span className="text-success font-medium">{scannedCount} на складе</span>
               {notScannedCount > 0 && <span className="text-destructive font-medium ml-2">{notScannedCount} не найдено</span>}
             </div>
           </div>
@@ -456,9 +485,11 @@ const StockPage = () => {
                 <TableRow className="bg-muted/50">
                   <TableHead className="text-xs font-medium w-8"></TableHead>
                   <TableHead className="text-xs font-medium">№ Короба</TableHead>
-                  <TableHead className="text-xs font-medium">УПД (баркод)</TableHead>
+                  <TableHead className="text-xs font-medium">Упаковочный лист</TableHead>
                   <TableHead className="text-xs font-medium text-right">Кол-во</TableHead>
-                  <TableHead className="text-xs font-medium">МП</TableHead>
+                  <TableHead className="text-xs font-medium">Бренд</TableHead>
+                  <TableHead className="text-xs font-medium">ИП</TableHead>
+                  <TableHead className="text-xs font-medium">Маркетплейс</TableHead>
                   <TableHead className="text-xs font-medium">Дата приёмки</TableHead>
                   <TableHead className="text-xs font-medium">Статус</TableHead>
                   {inventoryMode && !inventoryFinished && <TableHead className="text-xs font-medium w-16"></TableHead>}
@@ -492,6 +523,8 @@ const StockPage = () => {
                           </TableCell>
                           <TableCell className="text-sm font-mono text-muted-foreground">{box.upd}</TableCell>
                           <TableCell className="text-sm text-right font-medium">{box.qty}</TableCell>
+                          <TableCell className="text-sm">{box.brand}</TableCell>
+                          <TableCell className="text-sm text-muted-foreground">{box.ip}</TableCell>
                           <TableCell className="text-sm">{box.marketplace}</TableCell>
                           <TableCell className="text-sm text-muted-foreground">{box.dateReceived}</TableCell>
                           <TableCell><StatusBadge status={status.type} label={status.label} /></TableCell>
@@ -507,7 +540,7 @@ const StockPage = () => {
                         </TableRow>
                         <CollapsibleContent asChild>
                           <tr>
-                            <td colSpan={inventoryMode && !inventoryFinished ? 9 : 8} className="p-0">
+                            <td colSpan={inventoryMode && !inventoryFinished ? 11 : 10} className="p-0">
                               <div className="bg-muted/20 border-t border-border px-8 py-3">
                                 <p className="text-xs font-medium text-muted-foreground mb-2">Наполнение короба {box.boxNumber}</p>
                                 <Table>
@@ -562,7 +595,7 @@ const StockPage = () => {
                 })}
                 {filteredBoxes.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={9} className="text-center text-muted-foreground py-8">Ничего не найдено</TableCell>
+                    <TableCell colSpan={11} className="text-center text-muted-foreground py-8">Ничего не найдено</TableCell>
                   </TableRow>
                 )}
               </TableBody>
@@ -580,26 +613,82 @@ const StockPage = () => {
                   <TableHead className="text-xs font-medium">Артикул продавца</TableHead>
                   <TableHead className="text-xs font-medium">Бренд</TableHead>
                   <TableHead className="text-xs font-medium">Размер</TableHead>
-                  <TableHead className="text-xs font-medium text-right">Остаток</TableHead>
+                  <TableHead className="text-xs font-medium text-right">Количество</TableHead>
                   <TableHead className="text-xs font-medium">Баркод</TableHead>
+                  <TableHead className="text-xs font-medium">Честный знак</TableHead>
+                  <TableHead className="text-xs font-medium">Тип</TableHead>
                   <TableHead className="text-xs font-medium">Дата приёмки</TableHead>
+                  <TableHead className="text-xs font-medium">Статус</TableHead>
+                  {inventoryMode && !inventoryFinished && <TableHead className="text-xs font-medium w-16"></TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredSKU.map((item, idx) => (
-                  <TableRow key={idx}>
-                    <TableCell className="text-sm font-mono">{item.article}</TableCell>
-                    <TableCell className="text-sm font-mono text-muted-foreground">{item.articleSeller}</TableCell>
-                    <TableCell className="text-sm">{item.brand}</TableCell>
-                    <TableCell className="text-sm">{item.size || "—"}</TableCell>
-                    <TableCell className="text-sm text-right font-medium">{item.qty}</TableCell>
-                    <TableCell className="text-sm font-mono text-muted-foreground">{item.barcode}</TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{item.dateReceived}</TableCell>
-                  </TableRow>
-                ))}
+                {filteredSKU.flatMap((item, idx) => {
+                  const rows: JSX.Element[] = [];
+                  if (item.chzCodes && item.chzCodes.length > 0) {
+                    item.chzCodes.forEach((code, cIdx) => {
+                      const key = `${item.boxId}:${item.barcode}:${code}`;
+                      const st = getSkuStatus(key);
+                      const scanned = scannedSkuIds.has(key);
+                      rows.push(
+                        <TableRow key={`${idx}-${cIdx}`}
+                          className={inventoryMode ? (scanned ? "bg-success/5" : inventoryFinished ? "bg-destructive/5" : "") : ""}>
+                          <TableCell className="text-sm font-mono">{item.article}</TableCell>
+                          <TableCell className="text-sm font-mono text-muted-foreground">{item.articleSeller}</TableCell>
+                          <TableCell className="text-sm">{item.brand}</TableCell>
+                          <TableCell className="text-sm">{item.size || "—"}</TableCell>
+                          <TableCell className="text-sm text-right font-medium">1</TableCell>
+                          <TableCell className="text-sm font-mono text-muted-foreground">{item.barcode}</TableCell>
+                          <TableCell className="text-xs font-mono text-muted-foreground max-w-[200px] truncate" title={code}>{code}</TableCell>
+                          <TableCell className="text-xs">{item.kind === "set" ? `набор (${item.setSize ?? ""} шт)` : "единица"}</TableCell>
+                          <TableCell className="text-sm text-muted-foreground">{item.dateReceived}</TableCell>
+                          <TableCell><StatusBadge status={st.type} label={st.label} /></TableCell>
+                          {inventoryMode && !inventoryFinished && (
+                            <TableCell>
+                              {!scanned && (
+                                <Button variant="ghost" size="sm" onClick={() => handleScanSku(key)} title="Отметить">
+                                  <ScanLine className="w-4 h-4" />
+                                </Button>
+                              )}
+                            </TableCell>
+                          )}
+                        </TableRow>
+                      );
+                    });
+                  } else {
+                    const key = `${item.boxId}:${item.barcode}`;
+                    const st = getSkuStatus(key);
+                    const scanned = scannedSkuIds.has(key);
+                    rows.push(
+                      <TableRow key={idx}
+                        className={inventoryMode ? (scanned ? "bg-success/5" : inventoryFinished ? "bg-destructive/5" : "") : ""}>
+                        <TableCell className="text-sm font-mono">{item.article}</TableCell>
+                        <TableCell className="text-sm font-mono text-muted-foreground">{item.articleSeller}</TableCell>
+                        <TableCell className="text-sm">{item.brand}</TableCell>
+                        <TableCell className="text-sm">{item.size || "—"}</TableCell>
+                        <TableCell className="text-sm text-right font-medium">{item.qty}</TableCell>
+                        <TableCell className="text-sm font-mono text-muted-foreground">{item.barcode}</TableCell>
+                        <TableCell className="text-xs text-muted-foreground">—</TableCell>
+                        <TableCell className="text-xs">{item.kind === "set" ? `набор (${item.setSize ?? ""} шт)` : "единица"}</TableCell>
+                        <TableCell className="text-sm text-muted-foreground">{item.dateReceived}</TableCell>
+                        <TableCell><StatusBadge status={st.type} label={st.label} /></TableCell>
+                        {inventoryMode && !inventoryFinished && (
+                          <TableCell>
+                            {!scanned && (
+                              <Button variant="ghost" size="sm" onClick={() => handleScanSku(key)} title="Отметить">
+                                <ScanLine className="w-4 h-4" />
+                              </Button>
+                            )}
+                          </TableCell>
+                        )}
+                      </TableRow>
+                    );
+                  }
+                  return rows;
+                })}
                 {filteredSKU.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center text-muted-foreground py-8">Ничего не найдено</TableCell>
+                    <TableCell colSpan={inventoryMode && !inventoryFinished ? 11 : 10} className="text-center text-muted-foreground py-8">Ничего не найдено</TableCell>
                   </TableRow>
                 )}
               </TableBody>
@@ -608,67 +697,49 @@ const StockPage = () => {
         )}
       </div>
 
-      {/* Upload UPD dialog */}
-      <Dialog open={uploadDialogOpen} onOpenChange={(open) => {
-        setUploadDialogOpen(open);
-        if (!open) { setUploadBarcode(""); setUploadTargetItem(null); setUploadTab("file"); }
+      {/* Add item dialog */}
+      <Dialog open={addDialogOpen} onOpenChange={(open) => {
+        setAddDialogOpen(open);
+        if (!open) { setAddBarcode(""); setAddPreview(null); }
       }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Upload className="w-5 h-5 text-primary" />
-              Загрузить УПД
+              <Plus className="w-5 h-5 text-primary" />
+              Добавить товар
             </DialogTitle>
-            <DialogDescription>Загрузите XML-файл или отсканируйте штрих-код</DialogDescription>
+            <DialogDescription>
+              Отсканируйте упаковочный лист (коробка), штрих-код или Честный знак (единица).
+              Можно также ввести значение вручную.
+            </DialogDescription>
           </DialogHeader>
-          <div className="flex gap-2 border-b border-border pb-2">
-            <Button variant={uploadTab === "file" ? "default" : "ghost"} size="sm"
-              onClick={() => { setUploadTab("file"); setUploadTargetItem(null); setUploadBarcode(""); }}>
-              <FileText className="w-4 h-4 mr-1" />XML файл
-            </Button>
-            <Button variant={uploadTab === "barcode" ? "default" : "ghost"} size="sm"
-              onClick={() => { setUploadTab("barcode"); setUploadTargetItem(null); }}>
-              <ScanLine className="w-4 h-4 mr-1" />Штрих-код
-            </Button>
-          </div>
-          {uploadTab === "file" && (
-            <div className="space-y-4">
-              <p className="text-sm text-muted-foreground">Выберите XML-файл УПД. Система автоматически считает данные и добавит в Сток.</p>
-              <input ref={xmlInputRef} type="file" className="hidden" accept=".xml"
-                onChange={(e) => { const file = e.target.files?.[0]; if (file) handleXMLUpload(file); e.target.value = ""; }} />
-              <Button variant="outline" className="w-full h-24 border-dashed border-2 flex flex-col gap-2"
-                onClick={() => xmlInputRef.current?.click()}>
-                <Upload className="w-6 h-6 text-muted-foreground" />
-                <span className="text-sm text-muted-foreground">Нажмите для выбора XML файла</span>
-              </Button>
-            </div>
-          )}
-          {uploadTab === "barcode" && (
-            <div className="space-y-4">
-              <p className="text-sm text-muted-foreground">Отсканируйте штрих-код с печатного УПД или введите вручную.</p>
-              <div className="flex items-center gap-2">
-                <div className="relative flex-1">
-                  <ScanLine className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                  <Input placeholder="Штрих-код или номер УПД..." value={uploadBarcode}
-                    onChange={(e) => setUploadBarcode(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && handleBarcodeUploadSearch()}
-                    className="pl-9" autoFocus />
-                </div>
-                <Button size="sm" onClick={handleBarcodeUploadSearch}>Найти</Button>
+          <div className="space-y-4">
+            <div className="flex items-center gap-2">
+              <div className="relative flex-1">
+                <ScanLine className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input
+                  placeholder="Штрих-код, ЧЗ или упаковочный лист..."
+                  value={addBarcode}
+                  onChange={(e) => { setAddBarcode(e.target.value); setAddPreview(null); }}
+                  onKeyDown={(e) => e.key === "Enter" && handleAddLookup()}
+                  className="pl-9" autoFocus
+                />
               </div>
-              {uploadTargetItem && (
-                <div className="rounded-lg border border-primary/30 bg-primary/5 p-4 space-y-3">
-                  <div className="flex items-center gap-2">
-                    <Package className="w-4 h-4 text-primary" />
-                    <span className="font-medium text-sm">{uploadTargetItem.upd}</span>
-                  </div>
-                  <Button variant="default" size="sm" className="w-full" onClick={handleBarcodeAddToStock}>
-                    <CheckCircle2 className="w-4 h-4 mr-2" />Добавить в Сток
-                  </Button>
-                </div>
-              )}
+              <Button size="sm" onClick={handleAddLookup}>Считать</Button>
             </div>
-          )}
+            {addPreview && (
+              <div className="rounded-lg border border-primary/30 bg-primary/5 p-4 space-y-3">
+                <div className="flex items-center gap-2">
+                  {addPreview.kind === "box" ? <Box className="w-4 h-4 text-primary" /> : <Package className="w-4 h-4 text-primary" />}
+                  <span className="font-medium text-sm">{addPreview.label}</span>
+                </div>
+                <p className="text-xs text-muted-foreground">{addPreview.detail}</p>
+                <Button variant="default" size="sm" className="w-full" onClick={handleAddConfirm}>
+                  <CheckCircle2 className="w-4 h-4 mr-2" />Добавить в Сток
+                </Button>
+              </div>
+            )}
+          </div>
         </DialogContent>
       </Dialog>
     </div>

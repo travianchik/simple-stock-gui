@@ -1,27 +1,24 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import PageHeader from "@/components/PageHeader";
 import StatusBadge from "@/components/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Search, Play, Download, Eye, UserPlus, Package, Printer, CircleCheck as CheckCircle, ArrowLeft, Plus, ScanBarcode, X, RotateCcw } from "lucide-react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Search, Play, Download, Eye, UserPlus, Package, Printer, CircleCheck as CheckCircle, ArrowLeft, Plus, ScanBarcode, Upload, FileSpreadsheet, Store, Link as LinkIcon } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
+import * as XLSX from "xlsx";
+import { useRoles } from "@/contexts/RoleContext";
 
-type OrderStatus = "new" | "in_progress" | "completed" | "overstock" | "shortage" | "resorting" | "return" | "partial_return";
+type OrderStatus = "new" | "in_progress" | "completed";
 
 const statusMap: Record<OrderStatus, { label: string; type: "success" | "warning" | "error" | "default" | "primary" }> = {
   new: { label: "Новый", type: "default" },
   in_progress: { label: "В работе", type: "primary" },
   completed: { label: "Завершён", type: "success" },
-  overstock: { label: "Пересток", type: "warning" },
-  shortage: { label: "Недостача", type: "error" },
-  resorting: { label: "Пересорт", type: "warning" },
-  return: { label: "Возврат", type: "error" },
-  partial_return: { label: "Частичный возврат", type: "error" },
 };
 
 interface LabelItem {
@@ -95,14 +92,14 @@ const initialOrders: Order[] = [
       ...l, scanned: true, boxId: "box-1",
       chzCode: i < 10 ? `010464007456781${String(i + 1).padStart(4, "0")}` : undefined,
     })),
-    boxes: [{ id: "box-1", number: 1, updNumber: "УПД-20260402-001", items: [], sealed: true }],
+    boxes: [{ id: "box-1", number: 1, updNumber: "УПЛ-20260402-001", items: [], sealed: true }],
   },
   {
     id: 2, number: "ORD-2042", marketplace: "OZON", brand: "DenimPro", ip: "ИП Петров Б.Б.",
     totalLabels: 18, scannedCount: 7, status: "in_progress",
     employees: ["Сидоров В.Д."], date: "03.04.2026",
     labels: generateLabels(18, "DenimPro").map((l, i) => i < 7 ? { ...l, scanned: true, boxId: "box-2" } : l),
-    boxes: [{ id: "box-2", number: 1, updNumber: "УПД-20260403-001", items: [], sealed: false }],
+    boxes: [{ id: "box-2", number: 1, updNumber: "УПЛ-20260403-001", items: [], sealed: false }],
   },
   {
     id: 3, number: "ORD-2043", marketplace: "Wildberries", brand: "RunStyle", ip: "ИП Иванов А.А.",
@@ -113,21 +110,25 @@ const initialOrders: Order[] = [
   },
   {
     id: 4, number: "ORD-2044", marketplace: "Wildberries", brand: "BasicWear", ip: "ИП Сидоров В.В.",
-    totalLabels: 10, scannedCount: 12, status: "overstock",
+    totalLabels: 12, scannedCount: 12, status: "completed",
     employees: ["Козлов Д.А."], date: "01.04.2026",
     labels: generateLabels(12, "BasicWear").map(l => ({ ...l, scanned: true, boxId: "box-4" })),
-    boxes: [{ id: "box-4", number: 1, updNumber: "УПД-20260401-001", items: [], sealed: true }],
+    boxes: [{ id: "box-4", number: 1, updNumber: "УПЛ-20260401-001", items: [], sealed: true }],
   },
   {
     id: 5, number: "ORD-2045", marketplace: "OZON", brand: "UrbanBag", ip: "ИП Петров Б.Б.",
-    totalLabels: 15, scannedCount: 11, status: "shortage",
+    totalLabels: 11, scannedCount: 11, status: "completed",
     employees: ["Иванов А.В."], date: "31.03.2026",
-    labels: generateLabels(15, "UrbanBag").map((l, i) => i < 11 ? { ...l, scanned: true, boxId: "box-5" } : { ...l, flagged: true }),
-    boxes: [{ id: "box-5", number: 1, updNumber: "УПД-20260331-001", items: [], sealed: true }],
+    labels: generateLabels(11, "UrbanBag").map(l => ({ ...l, scanned: true, boxId: "box-5" })),
+    boxes: [{ id: "box-5", number: 1, updNumber: "УПЛ-20260331-001", items: [], sealed: true }],
   },
 ];
 
 const ReceivingPage = () => {
+  const { currentUser, updateUser } = useRoles();
+  const canCreateOrder = currentUser.role === "warehouse_head" || currentUser.role === "receiving_manager";
+  const canDownloadReport = canCreateOrder;
+
   const [search, setSearch] = useState("");
   const [mpFilter, setMpFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -135,8 +136,15 @@ const ReceivingPage = () => {
   const [activeOrderId, setActiveOrderId] = useState<number | null>(null);
   const [assignDialog, setAssignDialog] = useState<number | null>(null);
   const [selectedEmployees, setSelectedEmployees] = useState<string[]>([]);
-  const [statusDialog, setStatusDialog] = useState<number | null>(null);
   const [tab, setTab] = useState("active");
+
+  // Create order dialog state
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createTab, setCreateTab] = useState<"file" | "marketplace">("file");
+  const [uploadedRows, setUploadedRows] = useState<Array<{ barcode: string; chz?: string; qty: number }>>([]);
+  const [selectedMarketplace, setSelectedMarketplace] = useState<"Wildberries" | "OZON" | "">("");
+  const [mpProducts, setMpProducts] = useState<Array<{ id: string; barcode: string; name: string; qty: number }>>([]);
+  const excelInputRef = useRef<HTMLInputElement>(null);
 
   const activeOrder = orders.find(o => o.id === activeOrderId) || null;
 
@@ -148,9 +156,7 @@ const ReceivingPage = () => {
     const matchSearch = o.number.toLowerCase().includes(search.toLowerCase()) || o.brand.toLowerCase().includes(search.toLowerCase());
     const matchMp = mpFilter === "all" || o.marketplace === mpFilter;
     const matchStatus = statusFilter === "all" || o.status === statusFilter;
-    const matchTab = tab === "active"
-      ? !["completed", "overstock", "shortage", "resorting"].includes(o.status)
-      : ["completed", "overstock", "shortage", "resorting", "return", "partial_return"].includes(o.status);
+    const matchTab = tab === "active" ? o.status !== "completed" : o.status === "completed";
     return matchSearch && matchMp && matchStatus && matchTab;
   });
 
@@ -222,21 +228,21 @@ const ReceivingPage = () => {
   };
 
   // --- Boxes ---
-  const sealBoxAndPrintUPD = () => {
+  const sealBoxAndPrintPackingList = () => {
     if (!activeOrder) return;
     const openBox = activeOrder.boxes.find(b => !b.sealed);
     if (!openBox || openBox.items.length === 0) {
       toast.error("Коробка пуста");
       return;
     }
-    const updNum = `УПД-${activeOrder.number}-${openBox.number}`;
+    const updNum = `УПЛ-${activeOrder.number}-${openBox.number}`;
     updateOrder(activeOrder.id, o => ({
       ...o,
       boxes: o.boxes.map(b =>
         b.id === openBox.id ? { ...b, sealed: true, updNumber: updNum } : b
       ),
     }));
-    toast.success(`Напечатан ${updNum}`);
+    toast.success(`Напечатан Упаковочный лист ${updNum}`);
   };
 
   const addNewBox = () => {
@@ -249,51 +255,141 @@ const ReceivingPage = () => {
     toast.success(`Коробка №${num} добавлена`);
   };
 
-  // --- Finish ---
+  // --- Finish: просто завершить, без выбора статуса ---
   const finishReceiving = () => {
     if (!activeOrder) return;
-    setStatusDialog(activeOrder.id);
-  };
-
-  const setFinalStatus = (status: OrderStatus) => {
-    if (statusDialog === null) return;
-    updateOrder(statusDialog, o => {
-      const labels = o.labels.map(l => ({
-        ...l,
-        flagged: !l.scanned && ["shortage", "resorting", "return", "partial_return"].includes(status),
-      }));
-      return { ...o, status, labels };
-    });
-    setStatusDialog(null);
-    setActiveOrderId(null);
-    toast.success(`Статус заказа: ${statusMap[status].label}`);
-  };
-
-  // --- Reopen ---
-  const reopenOrder = (orderId: number) => {
-    updateOrder(orderId, o => ({
+    updateOrder(activeOrder.id, o => ({
       ...o,
-      status: "in_progress",
+      status: "completed",
+      boxes: o.boxes.map(b => ({ ...b, sealed: true })),
     }));
-    setActiveOrderId(orderId);
-    toast.info("Заказ переоткрыт");
+    toast.success("Заказ завершён. Коробки переданы в Сток.");
+    setActiveOrderId(null);
   };
 
-  // --- Export ---
+  // --- Export: Excel с штрихкодом, ЧЗ, количеством, сотрудником и сканером ---
   const exportReport = (order: Order) => {
-    const rows = [
-      ["Сотрудник", "Отсканировано этикеток"],
-      ...order.employees.map(e => [e, String(Math.floor(order.scannedCount / (order.employees.length || 1)))]),
-    ];
-    const csv = rows.map(r => r.join(";")).join("\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `отчёт-${order.number}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    const empList = order.employees
+      .map(name => availableEmployees.find(e => e.name === name))
+      .filter(Boolean) as typeof availableEmployees;
+    const rows = order.labels
+      .filter(l => l.scanned)
+      .map((l, idx) => {
+        const emp = empList[idx % (empList.length || 1)] || { name: "—", scanner: "—" };
+        return {
+          "Штрих-код": l.barcode,
+          "Честный знак": l.chzCode || "",
+          "Количество": 1,
+          "Сотрудник": emp.name,
+          "Номер сканера": emp.scanner,
+        };
+      });
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Отчёт");
+    XLSX.writeFile(wb, `Отчёт_${order.number}.xlsx`);
     toast.success("Отчёт выгружен");
+  };
+
+  // --- Scanner connection (для сотрудников) ---
+  const connectScanner = () => {
+    if (currentUser.scanner && currentUser.scanner !== "—") {
+      toast.info(`Сканер уже подключён: ${currentUser.scanner}`);
+      return;
+    }
+    // имитация поиска сканера на устройстве
+    const newScanner = `SCN-${String(Math.floor(Math.random() * 900) + 100)}`;
+    updateUser(currentUser.id, { scanner: newScanner });
+    toast.success(`Сканер ${newScanner} привязан к профилю`);
+  };
+
+  // --- Create order: upload Excel ---
+  const handleExcelUpload = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const data = new Uint8Array(e.target?.result as ArrayBuffer);
+        const wb = XLSX.read(data, { type: "array" });
+        const sheet = wb.Sheets[wb.SheetNames[0]];
+        const raw = XLSX.utils.sheet_to_json<Record<string, string | number>>(sheet, { defval: "" });
+        const rows = raw.map((r) => {
+          const keys = Object.keys(r);
+          const barcode = String(r[keys.find(k => /штрих|bar/i.test(k)) || keys[0]] || "");
+          const chz = String(r[keys.find(k => /чз|киз|знак/i.test(k)) || ""] || "");
+          const qty = Number(r[keys.find(k => /кол|qty|count/i.test(k)) || ""] || 1) || 1;
+          return { barcode, chz: chz || undefined, qty };
+        }).filter(r => r.barcode || r.chz);
+        if (rows.length === 0) { toast.error("В файле не найдено строк"); return; }
+        setUploadedRows(rows);
+        toast.success(`Загружено ${rows.length} позиций`);
+      } catch {
+        toast.error("Не удалось прочитать Excel");
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  };
+
+  const loadMarketplaceProducts = (mp: "Wildberries" | "OZON") => {
+    setSelectedMarketplace(mp);
+    // Имитация загрузки товаров с маркетплейса
+    setMpProducts([
+      { id: "p1", barcode: "4607012399001", name: "Футболка базовая S", qty: 0 },
+      { id: "p2", barcode: "4607012399002", name: "Футболка базовая M", qty: 0 },
+      { id: "p3", barcode: "4607012399003", name: "Джинсы slim 30", qty: 0 },
+      { id: "p4", barcode: "4607012399004", name: "Худи оверсайз L", qty: 0 },
+      { id: "p5", barcode: "4607012399005", name: "Рюкзак чёрный", qty: 0 },
+    ]);
+  };
+
+  const createOrderFromData = (source: "file" | "marketplace") => {
+    let rowsForLabels: Array<{ barcode: string; chz?: string; qty: number }>;
+    let mp = "";
+    if (source === "file") {
+      rowsForLabels = uploadedRows;
+      mp = "—";
+    } else {
+      rowsForLabels = mpProducts.filter(p => p.qty > 0).map(p => ({ barcode: p.barcode, qty: p.qty }));
+      mp = selectedMarketplace || "—";
+    }
+    if (rowsForLabels.length === 0) { toast.error("Нет позиций для заказа"); return; }
+    const total = rowsForLabels.reduce((s, r) => s + r.qty, 0);
+    const labels: LabelItem[] = [];
+    rowsForLabels.forEach((r, rIdx) => {
+      for (let i = 0; i < r.qty; i++) {
+        labels.push({
+          id: `lbl-${Date.now()}-${rIdx}-${i}`,
+          barcode: r.barcode,
+          article: `ART-${rIdx + 1}`,
+          name: `Товар ${rIdx + 1}`,
+          size: "—",
+          scanned: false,
+          boxId: null,
+          flagged: false,
+          chzCode: r.chz,
+        });
+      }
+    });
+    const newOrder: Order = {
+      id: Date.now(),
+      number: `ORD-${String(Date.now()).slice(-4)}`,
+      marketplace: mp,
+      brand: "—",
+      ip: "—",
+      totalLabels: total,
+      scannedCount: 0,
+      status: "new",
+      employees: [],
+      date: new Date().toLocaleDateString("ru-RU"),
+      labels,
+      boxes: [],
+    };
+    setOrders(prev => [newOrder, ...prev]);
+    toast.success(`Заказ ${newOrder.number} создан`);
+    setCreateOpen(false);
+    setUploadedRows([]); setSelectedMarketplace(""); setMpProducts([]); setCreateTab("file");
+    // сразу открываем окно назначения сотрудника
+    setSelectedEmployees([]);
+    setAssignDialog(newOrder.id);
   };
 
   // ===================== ORDER DETAIL VIEW =====================
@@ -314,9 +410,23 @@ const ReceivingPage = () => {
               <Button variant="outline" size="sm" onClick={() => setActiveOrderId(null)}>
                 <ArrowLeft className="w-4 h-4 mr-1" /> Назад
               </Button>
-              <Button variant="outline" size="sm" onClick={() => openAssignDialog(activeOrder.id)}>
-                <UserPlus className="w-4 h-4 mr-1" /> Сотрудники
-              </Button>
+              {currentUser.role === "employee" && (
+                <div className="flex items-center gap-1 px-3 py-1.5 rounded-md border border-border bg-muted/30 text-xs">
+                  <ScanBarcode className="w-3.5 h-3.5 text-muted-foreground" />
+                  <span className="text-muted-foreground">Сканер:</span>
+                  <span className="font-medium">{currentUser.scanner && currentUser.scanner !== "—" ? currentUser.scanner : "не подключён"}</span>
+                  {(!currentUser.scanner || currentUser.scanner === "—") && (
+                    <Button variant="ghost" size="sm" className="h-6 px-2 ml-1" onClick={connectScanner}>
+                      <LinkIcon className="w-3 h-3 mr-1" /> Подключить
+                    </Button>
+                  )}
+                </div>
+              )}
+              {canCreateOrder && (
+                <Button variant="outline" size="sm" onClick={() => openAssignDialog(activeOrder.id)}>
+                  <UserPlus className="w-4 h-4 mr-1" /> Сотрудники
+                </Button>
+              )}
             </div>
           }
         />
@@ -352,8 +462,8 @@ const ReceivingPage = () => {
               <ScanBarcode className="w-4 h-4 mr-1" /> Сканировать
             </Button>
             {openBox && (
-              <Button variant="outline" onClick={sealBoxAndPrintUPD} disabled={scannedInOpenBox === 0}>
-                <Printer className="w-4 h-4 mr-1" /> Напечатать УПД (коробка №{openBox.number})
+              <Button variant="outline" onClick={sealBoxAndPrintPackingList} disabled={scannedInOpenBox === 0}>
+                <Printer className="w-4 h-4 mr-1" /> Напечатать Упаковочный лист (коробка №{openBox.number})
               </Button>
             )}
             <Button variant="outline" onClick={addNewBox}>
@@ -448,31 +558,6 @@ const ReceivingPage = () => {
           onConfirm={confirmAssign}
         />
 
-        {/* Status dialog */}
-        <Dialog open={statusDialog !== null} onOpenChange={() => setStatusDialog(null)}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Завершение приёмки</DialogTitle>
-            </DialogHeader>
-            <p className="text-sm text-muted-foreground mb-3">
-              Отсканировано {totalScanned} из {totalLabels} этикеток. Выберите итоговый статус:
-            </p>
-            <div className="grid grid-cols-1 gap-2">
-              <Button variant="outline" className="justify-start" onClick={() => setFinalStatus("completed")} disabled={totalScanned !== totalLabels}>
-                <CheckCircle className="w-4 h-4 mr-2 text-success" /> Завершить заказ
-              </Button>
-              <Button variant="outline" className="justify-start" onClick={() => setFinalStatus("overstock")}>
-                <Package className="w-4 h-4 mr-2 text-warning" /> Пересток (товара больше этикеток)
-              </Button>
-              <Button variant="outline" className="justify-start" onClick={() => setFinalStatus("resorting")}>
-                <RotateCcw className="w-4 h-4 mr-2 text-warning" /> Пересорт
-              </Button>
-              <Button variant="outline" className="justify-start" onClick={() => setFinalStatus("shortage")}>
-                <X className="w-4 h-4 mr-2 text-destructive" /> Недостача (товара меньше этикеток)
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
       </div>
     );
   }
@@ -480,7 +565,31 @@ const ReceivingPage = () => {
   // ===================== ORDER LIST VIEW =====================
   return (
     <div className="flex flex-col h-full">
-      <PageHeader title="Приёмка товара" description="Приём заказов от изготовителей, маркировка и формирование УПД" />
+      <PageHeader
+        title="Приёмка товара"
+        description="Приём заказов от изготовителей, маркировка и формирование Упаковочных листов"
+        actions={
+          <div className="flex items-center gap-2">
+            {currentUser.role === "employee" && (
+              <div className="flex items-center gap-1 px-3 py-1.5 rounded-md border border-border bg-muted/30 text-xs">
+                <ScanBarcode className="w-3.5 h-3.5 text-muted-foreground" />
+                <span className="text-muted-foreground">Сканер:</span>
+                <span className="font-medium">{currentUser.scanner && currentUser.scanner !== "—" ? currentUser.scanner : "не подключён"}</span>
+                {(!currentUser.scanner || currentUser.scanner === "—") && (
+                  <Button variant="ghost" size="sm" className="h-6 px-2 ml-1" onClick={connectScanner}>
+                    <LinkIcon className="w-3 h-3 mr-1" /> Подключить
+                  </Button>
+                )}
+              </div>
+            )}
+            {canCreateOrder && (
+              <Button size="sm" onClick={() => setCreateOpen(true)}>
+                <Plus className="w-4 h-4 mr-1" /> Создать заказ
+              </Button>
+            )}
+          </div>
+        }
+      />
 
       <div className="p-6 space-y-4 flex-1 overflow-auto">
         {/* Tabs */}
@@ -564,7 +673,7 @@ const ReceivingPage = () => {
                     <TableCell className="text-sm text-muted-foreground">{order.date}</TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1">
-                        {order.status === "new" && (
+                        {order.status === "new" && canCreateOrder && (
                           <>
                             <Button variant="ghost" size="sm" title="Назначить сотрудников" onClick={() => openAssignDialog(order.id)}>
                               <UserPlus className="w-4 h-4" />
@@ -579,12 +688,7 @@ const ReceivingPage = () => {
                             <Play className="w-4 h-4" />
                           </Button>
                         )}
-                        {["shortage", "resorting", "return", "partial_return"].includes(order.status) && (
-                          <Button variant="ghost" size="sm" title="Переоткрыть" onClick={() => reopenOrder(order.id)}>
-                            <RotateCcw className="w-4 h-4" />
-                          </Button>
-                        )}
-                        {["completed", "overstock", "shortage", "resorting"].includes(order.status) && (
+                        {order.status === "completed" && canDownloadReport && (
                           <Button variant="ghost" size="sm" title="Выгрузить отчёт" onClick={() => exportReport(order)}>
                             <Download className="w-4 h-4" />
                           </Button>
@@ -610,6 +714,138 @@ const ReceivingPage = () => {
         setSelected={setSelectedEmployees}
         onConfirm={confirmAssign}
       />
+
+      {/* Create order dialog */}
+      <Dialog open={createOpen} onOpenChange={(open) => {
+        setCreateOpen(open);
+        if (!open) {
+          setUploadedRows([]); setSelectedMarketplace(""); setMpProducts([]); setCreateTab("file");
+        }
+      }}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Plus className="w-5 h-5 text-primary" /> Создать заказ
+            </DialogTitle>
+            <DialogDescription>
+              Загрузите Excel-файл со списком товаров или создайте заказ из товаров подключенного маркетплейса.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex gap-2 border-b border-border pb-2">
+            <Button variant={createTab === "file" ? "default" : "ghost"} size="sm"
+              onClick={() => setCreateTab("file")}>
+              <FileSpreadsheet className="w-4 h-4 mr-1" /> Загрузить файл
+            </Button>
+            <Button variant={createTab === "marketplace" ? "default" : "ghost"} size="sm"
+              onClick={() => setCreateTab("marketplace")}>
+              <Store className="w-4 h-4 mr-1" /> Из маркетплейса
+            </Button>
+          </div>
+
+          {createTab === "file" && (
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Колонки: штрих-код маркетплейса и количество; либо штрих-код, КИЗ и количество; либо только КИЗ и количество.
+              </p>
+              <input ref={excelInputRef} type="file" className="hidden" accept=".xlsx,.xls,.csv"
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) handleExcelUpload(f); e.target.value = ""; }} />
+              <Button variant="outline" className="w-full h-20 border-dashed border-2 flex flex-col gap-1"
+                onClick={() => excelInputRef.current?.click()}>
+                <Upload className="w-5 h-5 text-muted-foreground" />
+                <span className="text-sm text-muted-foreground">Выбрать Excel файл</span>
+              </Button>
+              {uploadedRows.length > 0 && (
+                <div className="rounded-lg border border-border bg-muted/20 max-h-64 overflow-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="text-xs">Штрих-код</TableHead>
+                        <TableHead className="text-xs">КИЗ</TableHead>
+                        <TableHead className="text-xs text-right">Количество</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {uploadedRows.map((r, i) => (
+                        <TableRow key={i}>
+                          <TableCell className="text-xs font-mono">{r.barcode || "—"}</TableCell>
+                          <TableCell className="text-xs font-mono text-muted-foreground max-w-[160px] truncate">{r.chz || "—"}</TableCell>
+                          <TableCell className="text-xs text-right">{r.qty}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setCreateOpen(false)}>Отмена</Button>
+                <Button onClick={() => createOrderFromData("file")} disabled={uploadedRows.length === 0}>
+                  Создать заказ
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
+
+          {createTab === "marketplace" && (
+            <div className="space-y-4">
+              {!selectedMarketplace && (
+                <>
+                  <p className="text-sm text-muted-foreground">Выберите маркетплейс:</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <Button variant="outline" className="h-20" onClick={() => loadMarketplaceProducts("Wildberries")}>
+                      Wildberries
+                    </Button>
+                    <Button variant="outline" className="h-20" onClick={() => loadMarketplaceProducts("OZON")}>
+                      OZON
+                    </Button>
+                  </div>
+                </>
+              )}
+              {selectedMarketplace && (
+                <>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium">{selectedMarketplace}</span>
+                    <Button variant="ghost" size="sm" onClick={() => { setSelectedMarketplace(""); setMpProducts([]); }}>
+                      Сменить МП
+                    </Button>
+                  </div>
+                  <div className="rounded-lg border border-border bg-muted/20 max-h-64 overflow-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="text-xs">Штрих-код</TableHead>
+                          <TableHead className="text-xs">Наименование</TableHead>
+                          <TableHead className="text-xs w-28 text-right">Количество</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {mpProducts.map((p) => (
+                          <TableRow key={p.id}>
+                            <TableCell className="text-xs font-mono">{p.barcode}</TableCell>
+                            <TableCell className="text-xs">{p.name}</TableCell>
+                            <TableCell className="text-xs text-right">
+                              <Input type="number" min={0} value={p.qty}
+                                onChange={(e) => setMpProducts(prev => prev.map(q => q.id === p.id ? { ...q, qty: Math.max(0, Number(e.target.value) || 0) } : q))}
+                                className="h-7 w-20 ml-auto text-right" />
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                  <DialogFooter>
+                    <Button variant="outline" onClick={() => setCreateOpen(false)}>Отмена</Button>
+                    <Button onClick={() => createOrderFromData("marketplace")}
+                      disabled={mpProducts.every(p => p.qty === 0)}>
+                      Создать заказ
+                    </Button>
+                  </DialogFooter>
+                </>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
