@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Search, Play, Download, Eye, UserPlus, Package, Printer, CheckCircle, ArrowLeft, Plus, ScanBarcode, X, RotateCcw } from "lucide-react";
+import { Search, Play, Download, Eye, UserPlus, Package, Printer, CircleCheck as CheckCircle, ArrowLeft, Plus, ScanBarcode, X, RotateCcw } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -33,6 +33,7 @@ interface LabelItem {
   scanned: boolean;
   boxId: string | null;
   flagged: boolean; // red-flagged for shortage/return
+  chzCode?: string; // Честный знак per-unit code
 }
 
 interface Box {
@@ -48,6 +49,7 @@ interface Order {
   number: string;
   marketplace: string;
   brand: string;
+  ip: string;
   totalLabels: number;
   scannedCount: number;
   status: OrderStatus;
@@ -86,35 +88,38 @@ function generateLabels(count: number, brand: string): LabelItem[] {
 
 const initialOrders: Order[] = [
   {
-    id: 1, number: "ORD-2041", marketplace: "Wildberries", brand: "BasicWear",
+    id: 1, number: "ORD-2041", marketplace: "Wildberries", brand: "BasicWear", ip: "ИП Иванов А.А.",
     totalLabels: 24, scannedCount: 24, status: "completed",
     employees: ["Иванов А.В.", "Петров К.М."], date: "02.04.2026",
-    labels: generateLabels(24, "BasicWear").map(l => ({ ...l, scanned: true, boxId: "box-1" })),
+    labels: generateLabels(24, "BasicWear").map((l, i) => ({
+      ...l, scanned: true, boxId: "box-1",
+      chzCode: i < 10 ? `010464007456781${String(i + 1).padStart(4, "0")}` : undefined,
+    })),
     boxes: [{ id: "box-1", number: 1, updNumber: "УПД-20260402-001", items: [], sealed: true }],
   },
   {
-    id: 2, number: "ORD-2042", marketplace: "OZON", brand: "DenimPro",
+    id: 2, number: "ORD-2042", marketplace: "OZON", brand: "DenimPro", ip: "ИП Петров Б.Б.",
     totalLabels: 18, scannedCount: 7, status: "in_progress",
     employees: ["Сидоров В.Д."], date: "03.04.2026",
     labels: generateLabels(18, "DenimPro").map((l, i) => i < 7 ? { ...l, scanned: true, boxId: "box-2" } : l),
     boxes: [{ id: "box-2", number: 1, updNumber: "УПД-20260403-001", items: [], sealed: false }],
   },
   {
-    id: 3, number: "ORD-2043", marketplace: "Wildberries", brand: "RunStyle",
+    id: 3, number: "ORD-2043", marketplace: "Wildberries", brand: "RunStyle", ip: "ИП Иванов А.А.",
     totalLabels: 12, scannedCount: 0, status: "new",
     employees: [], date: "04.04.2026",
     labels: generateLabels(12, "RunStyle"),
     boxes: [],
   },
   {
-    id: 4, number: "ORD-2044", marketplace: "Wildberries", brand: "BasicWear",
+    id: 4, number: "ORD-2044", marketplace: "Wildberries", brand: "BasicWear", ip: "ИП Сидоров В.В.",
     totalLabels: 10, scannedCount: 12, status: "overstock",
     employees: ["Козлов Д.А."], date: "01.04.2026",
     labels: generateLabels(12, "BasicWear").map(l => ({ ...l, scanned: true, boxId: "box-4" })),
     boxes: [{ id: "box-4", number: 1, updNumber: "УПД-20260401-001", items: [], sealed: true }],
   },
   {
-    id: 5, number: "ORD-2045", marketplace: "OZON", brand: "UrbanBag",
+    id: 5, number: "ORD-2045", marketplace: "OZON", brand: "UrbanBag", ip: "ИП Петров Б.Б.",
     totalLabels: 15, scannedCount: 11, status: "shortage",
     employees: ["Иванов А.В."], date: "31.03.2026",
     labels: generateLabels(15, "UrbanBag").map((l, i) => i < 11 ? { ...l, scanned: true, boxId: "box-5" } : { ...l, flagged: true }),
@@ -303,7 +308,7 @@ const ReceivingPage = () => {
       <div className="flex flex-col h-full">
         <PageHeader
           title={`Приёмка ${activeOrder.number}`}
-          description={`${activeOrder.brand} · ${activeOrder.marketplace}`}
+          description={`${activeOrder.brand} · ${activeOrder.marketplace} · ${activeOrder.ip}`}
           actions={
             <div className="flex items-center gap-2">
               <Button variant="outline" size="sm" onClick={() => setActiveOrderId(null)}>
@@ -386,6 +391,9 @@ const ReceivingPage = () => {
                   <TableHead className="text-xs font-medium">Артикул</TableHead>
                   <TableHead className="text-xs font-medium">Наименование</TableHead>
                   <TableHead className="text-xs font-medium">Размер</TableHead>
+                  {activeOrder.labels.some(l => l.chzCode) && (
+                    <TableHead className="text-xs font-medium">Честный знак</TableHead>
+                  )}
                   <TableHead className="text-xs font-medium">Коробка</TableHead>
                   <TableHead className="text-xs font-medium">Статус</TableHead>
                 </TableRow>
@@ -406,6 +414,11 @@ const ReceivingPage = () => {
                       <TableCell className="text-sm">{label.article}</TableCell>
                       <TableCell className="text-sm">{label.name}</TableCell>
                       <TableCell className="text-sm">{label.size}</TableCell>
+                      {activeOrder.labels.some(l => l.chzCode) && (
+                        <TableCell className="text-xs font-mono text-muted-foreground max-w-[180px] truncate" title={label.chzCode}>
+                          {label.chzCode || "—"}
+                        </TableCell>
+                      )}
                       <TableCell className="text-sm text-muted-foreground">
                         {box ? `№${box.number}` : "—"}
                       </TableCell>
@@ -513,8 +526,9 @@ const ReceivingPage = () => {
             <TableHeader>
               <TableRow className="bg-muted/50">
                 <TableHead className="text-xs font-medium">Заказ</TableHead>
-                <TableHead className="text-xs font-medium">Маркетплейс</TableHead>
+                <TableHead className="text-xs font-medium">МП</TableHead>
                 <TableHead className="text-xs font-medium">Бренд</TableHead>
+                <TableHead className="text-xs font-medium">ИП</TableHead>
                 <TableHead className="text-xs font-medium text-right">Этикетки</TableHead>
                 <TableHead className="text-xs font-medium text-right">Отсканировано</TableHead>
                 <TableHead className="text-xs font-medium">Сотрудники</TableHead>
@@ -526,7 +540,7 @@ const ReceivingPage = () => {
             <TableBody>
               {filtered.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={10} className="text-center text-muted-foreground py-8">
                     Заказы не найдены
                   </TableCell>
                 </TableRow>
@@ -538,6 +552,7 @@ const ReceivingPage = () => {
                     <TableCell className="font-mono text-sm font-medium">{order.number}</TableCell>
                     <TableCell className="text-sm">{order.marketplace}</TableCell>
                     <TableCell className="text-sm">{order.brand}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">{order.ip}</TableCell>
                     <TableCell className="text-sm text-right">{order.totalLabels}</TableCell>
                     <TableCell className="text-sm text-right">{scanned}</TableCell>
                     <TableCell className="text-sm text-muted-foreground max-w-[140px] truncate">

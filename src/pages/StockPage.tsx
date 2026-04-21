@@ -66,7 +66,7 @@ const mockBoxes: StockBox[] = [
     ip: "ИП Петров Б.Б.", marketplace: "Ozon",
     items: [
       { article: "OZ-99001", articleSeller: "JS-045-30", name: "Джинсы slim 30", qty: 30, barcode: "4607012345672-01", price: 3200, brand: "DenimPro", size: "30", dateReceived: "01.04.2026", marketplace: "Ozon" },
-      { article: "OZ-99002", articleSeller: "JS-045-32", name: "Джинсы slim 32", qty: 30, barcode: "4607012345672-02", price: 3200, brand: "DenimPro", size: "32", chz: "010464007456781921xyz456", dateReceived: "01.04.2026", marketplace: "Ozon" },
+      { article: "OZ-99002", articleSeller: "JS-045-32", name: "Джинсы slim 32", qty: 3, barcode: "4607012345672-02", price: 3200, brand: "DenimPro", size: "32", chzCodes: ["010464007456781921YXZ001", "010464007456781921YXZ002", "010464007456781921YXZ003"], dateReceived: "01.04.2026", marketplace: "Ozon" },
       { article: "OZ-99003", articleSeller: "JS-045-34", name: "Джинсы slim 34", qty: 20, barcode: "4607012345672-03", price: 3200, brand: "DenimPro", size: "34", dateReceived: "01.04.2026", marketplace: "Ozon" },
     ],
   },
@@ -206,21 +206,40 @@ const StockPage = () => {
   // Excel export
   const exportExcel = () => {
     const rows = boxes.flatMap((box) =>
-      box.items.map((item) => ({
-        "№ Короба": box.boxNumber,
-        "УПД": box.upd,
-        "Артикул WB/Ozon": item.article,
-        "Артикул продавца": item.articleSeller,
-        "Наименование": item.name,
-        "Бренд": item.brand,
-        "Размер": item.size || "—",
-        "Остаток": item.qty,
-        "Баркод": item.barcode,
-        "ЧЗ": item.chz || "",
-        "Дата приёмки": item.dateReceived,
-        "Маркетплейс": item.marketplace || "",
-        "ИП": box.ip,
-      }))
+      box.items.flatMap((item) => {
+        if (item.chzCodes && item.chzCodes.length > 0) {
+          return item.chzCodes.map((code) => ({
+            "№ Короба": box.boxNumber,
+            "УПД": box.upd,
+            "Артикул WB/Ozon": item.article,
+            "Артикул продавца": item.articleSeller,
+            "Наименование": item.name,
+            "Бренд": item.brand,
+            "Размер": item.size || "—",
+            "Остаток": 1,
+            "Баркод": item.barcode,
+            "ЧЗ": code,
+            "Дата приёмки": item.dateReceived,
+            "Маркетплейс": item.marketplace || "",
+            "ИП": box.ip,
+          }));
+        }
+        return [{
+          "№ Короба": box.boxNumber,
+          "УПД": box.upd,
+          "Артикул WB/Ozon": item.article,
+          "Артикул продавца": item.articleSeller,
+          "Наименование": item.name,
+          "Бренд": item.brand,
+          "Размер": item.size || "—",
+          "Остаток": item.qty,
+          "Баркод": item.barcode,
+          "ЧЗ": "",
+          "Дата приёмки": item.dateReceived,
+          "Маркетплейс": item.marketplace || "",
+          "ИП": box.ip,
+        }];
+      })
     );
     const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
@@ -437,8 +456,9 @@ const StockPage = () => {
                 <TableRow className="bg-muted/50">
                   <TableHead className="text-xs font-medium w-8"></TableHead>
                   <TableHead className="text-xs font-medium">№ Короба</TableHead>
+                  <TableHead className="text-xs font-medium">УПД (баркод)</TableHead>
                   <TableHead className="text-xs font-medium text-right">Кол-во</TableHead>
-                  <TableHead className="text-xs font-medium">Бренд</TableHead>
+                  <TableHead className="text-xs font-medium">МП</TableHead>
                   <TableHead className="text-xs font-medium">Дата приёмки</TableHead>
                   <TableHead className="text-xs font-medium">Статус</TableHead>
                   {inventoryMode && !inventoryFinished && <TableHead className="text-xs font-medium w-16"></TableHead>}
@@ -470,8 +490,9 @@ const StockPage = () => {
                               </button>
                             </CollapsibleTrigger>
                           </TableCell>
+                          <TableCell className="text-sm font-mono text-muted-foreground">{box.upd}</TableCell>
                           <TableCell className="text-sm text-right font-medium">{box.qty}</TableCell>
-                          <TableCell className="text-sm">{box.brand}</TableCell>
+                          <TableCell className="text-sm">{box.marketplace}</TableCell>
                           <TableCell className="text-sm text-muted-foreground">{box.dateReceived}</TableCell>
                           <TableCell><StatusBadge status={status.type} label={status.label} /></TableCell>
                           {inventoryMode && !inventoryFinished && (
@@ -486,7 +507,7 @@ const StockPage = () => {
                         </TableRow>
                         <CollapsibleContent asChild>
                           <tr>
-                            <td colSpan={inventoryMode && !inventoryFinished ? 7 : 6} className="p-0">
+                            <td colSpan={inventoryMode && !inventoryFinished ? 9 : 8} className="p-0">
                               <div className="bg-muted/20 border-t border-border px-8 py-3">
                                 <p className="text-xs font-medium text-muted-foreground mb-2">Наполнение короба {box.boxNumber}</p>
                                 <Table>
@@ -497,22 +518,38 @@ const StockPage = () => {
                                       <TableHead className="text-xs">Размер</TableHead>
                                       <TableHead className="text-xs text-right">Кол-во</TableHead>
                                       <TableHead className="text-xs">Баркод</TableHead>
-                                      {box.items.some((i) => i.chz) && <TableHead className="text-xs">ЧЗ</TableHead>}
+                                      {box.items.some((i) => i.chzCodes?.length) && <TableHead className="text-xs">Честный знак</TableHead>}
                                     </TableRow>
                                   </TableHeader>
                                   <TableBody>
-                                    {box.items.map((item, idx) => (
-                                      <TableRow key={idx}>
-                                        <TableCell className="text-xs font-mono">{item.articleSeller}</TableCell>
-                                        <TableCell className="text-xs">{item.name}</TableCell>
-                                        <TableCell className="text-xs">{item.size || "—"}</TableCell>
-                                        <TableCell className="text-xs text-right">{item.qty}</TableCell>
-                                        <TableCell className="text-xs font-mono text-muted-foreground">{item.barcode}</TableCell>
-                                        {box.items.some((i) => i.chz) && (
-                                          <TableCell className="text-xs font-mono text-muted-foreground max-w-[200px] truncate">{item.chz || "—"}</TableCell>
-                                        )}
-                                      </TableRow>
-                                    ))}
+                                    {box.items.flatMap((item, idx) => {
+                                      if (item.chzCodes && item.chzCodes.length > 0) {
+                                        return item.chzCodes.map((code, cIdx) => (
+                                          <TableRow key={`${idx}-${cIdx}`}>
+                                            <TableCell className="text-xs font-mono">{item.articleSeller}</TableCell>
+                                            <TableCell className="text-xs">{item.name}</TableCell>
+                                            <TableCell className="text-xs">{item.size || "—"}</TableCell>
+                                            <TableCell className="text-xs text-right">1</TableCell>
+                                            <TableCell className="text-xs font-mono text-muted-foreground">{item.barcode}</TableCell>
+                                            {box.items.some((i) => i.chzCodes?.length) && (
+                                              <TableCell className="text-xs font-mono text-muted-foreground max-w-[220px] truncate" title={code}>{code}</TableCell>
+                                            )}
+                                          </TableRow>
+                                        ));
+                                      }
+                                      return [(
+                                        <TableRow key={idx}>
+                                          <TableCell className="text-xs font-mono">{item.articleSeller}</TableCell>
+                                          <TableCell className="text-xs">{item.name}</TableCell>
+                                          <TableCell className="text-xs">{item.size || "—"}</TableCell>
+                                          <TableCell className="text-xs text-right">{item.qty}</TableCell>
+                                          <TableCell className="text-xs font-mono text-muted-foreground">{item.barcode}</TableCell>
+                                          {box.items.some((i) => i.chzCodes?.length) && (
+                                            <TableCell className="text-xs text-muted-foreground">—</TableCell>
+                                          )}
+                                        </TableRow>
+                                      )];
+                                    })}
                                   </TableBody>
                                 </Table>
                               </div>
@@ -525,7 +562,7 @@ const StockPage = () => {
                 })}
                 {filteredBoxes.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center text-muted-foreground py-8">Ничего не найдено</TableCell>
+                    <TableCell colSpan={9} className="text-center text-muted-foreground py-8">Ничего не найдено</TableCell>
                   </TableRow>
                 )}
               </TableBody>
