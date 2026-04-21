@@ -12,6 +12,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
 import { useRoles } from "@/contexts/RoleContext";
+import { useStock, StockBox, SKUItem } from "@/contexts/StockContext";
 
 type OrderStatus = "new" | "in_progress" | "completed" | "partially_accepted";
 
@@ -136,8 +137,10 @@ const initialOrders: Order[] = [
 
 const ReceivingPage = () => {
   const { currentUser, updateUser } = useRoles();
+  const { addBoxes, uploadedOrderIds, markOrderUploaded } = useStock();
   const canCreateOrder = currentUser.role === "warehouse_head" || currentUser.role === "receiving_manager";
   const canDownloadReport = canCreateOrder;
+  const canUploadToStock = canCreateOrder;
 
   const [search, setSearch] = useState("");
   const [mpFilter, setMpFilter] = useState("all");
@@ -278,10 +281,55 @@ const ReceivingPage = () => {
       labels: o.labels.map(l => ({ ...l, flagged: !l.scanned })),
       boxes: o.boxes.map(b => ({ ...b, sealed: true })),
     }));
-    toast.success(isFull
-      ? "Заказ завершён. Коробки переданы в Сток."
-      : "Заказ частично принят. Коробки переданы в Сток.");
+    toast.success(isFull ? "Заказ завершён" : "Заказ частично принят");
     setActiveOrderId(null);
+  };
+
+  // --- Загрузить заказ в Сток ---
+  const uploadOrderToStock = (order: Order) => {
+    if (uploadedOrderIds.has(order.id)) {
+      toast.info("Заказ уже загружен в Сток");
+      return;
+    }
+    const today = new Date().toLocaleDateString("ru-RU");
+    const newStockBoxes: StockBox[] = order.boxes
+      .filter(b => b.items.length > 0 || b.sealed)
+      .map((box, idx) => {
+        const items: SKUItem[] = order.labels
+          .filter(l => l.scanned && l.boxId === box.id)
+          .map(l => ({
+            article: l.article,
+            articleSeller: l.article,
+            name: l.name,
+            qty: 1,
+            barcode: l.barcode,
+            brand: order.brand,
+            size: l.size,
+            chzCodes: l.chzCode ? [l.chzCode] : undefined,
+            dateReceived: today,
+            marketplace: order.marketplace,
+            kind: "unit" as const,
+          }));
+        return {
+          id: Date.now() + idx,
+          boxNumber: `КРБ-${String(Date.now()).slice(-3)}-${box.number}`,
+          upd: box.updNumber || `УПЛ-${order.number}-${box.number}`,
+          qty: items.reduce((s, it) => s + it.qty, 0),
+          brand: order.brand,
+          dateReceived: today,
+          status: "on_stock" as const,
+          ip: order.ip,
+          marketplace: order.marketplace,
+          items,
+        };
+      });
+    if (newStockBoxes.length === 0) {
+      toast.error("В заказе нет коробок с товаром");
+      return;
+    }
+    addBoxes(newStockBoxes);
+    markOrderUploaded(order.id);
+    toast.success(`Заказ ${order.number} загружен в Сток (${newStockBoxes.length} коробок)`);
   };
 
   // --- Export: Excel с штрихкодом, ЧЗ, количеством, сотрудником и сканером ---
@@ -704,6 +752,17 @@ const ReceivingPage = () => {
                           <Button variant="ghost" size="sm" title="Продолжить приём" onClick={() => setActiveOrderId(order.id)}>
                             <Play className="w-4 h-4" />
                           </Button>
+                        )}
+                        {(order.status === "completed" || order.status === "partially_accepted") && canUploadToStock && (
+                          uploadedOrderIds.has(order.id) ? (
+                            <Button variant="ghost" size="sm" disabled title="Уже в Стоке">
+                              <CheckCircle className="w-4 h-4 text-success" />
+                            </Button>
+                          ) : (
+                            <Button variant="outline" size="sm" onClick={() => uploadOrderToStock(order)}>
+                              <Package className="w-4 h-4 mr-1" /> Загрузить в Сток
+                            </Button>
+                          )
                         )}
                         {(order.status === "completed" || order.status === "partially_accepted") && canDownloadReport && (
                           <Button variant="ghost" size="sm" title="Выгрузить отчёт" onClick={() => exportReport(order)}>

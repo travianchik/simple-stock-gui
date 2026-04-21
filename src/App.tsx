@@ -4,6 +4,7 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { RoleProvider } from "./contexts/RoleContext";
+import { StockProvider } from "./contexts/StockContext";
 import AppLayout from "./components/AppLayout";
 import StockPage from "./pages/StockPage";
 import ReceivingPage from "./pages/ReceivingPage";
@@ -21,6 +22,7 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <RoleProvider>
+          <StockProvider>
           <Routes>
             <Route element={<AppLayout />}>
               <Route path="/" element={<StockPage />} />
@@ -31,6 +33,7 @@ const App = () => (
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>
+          </StockProvider>
         </RoleProvider>
       </BrowserRouter>
     </TooltipProvider>
