@@ -887,6 +887,7 @@ const ReceivingPage = () => {
         selected={selectedEmployees}
         setSelected={setSelectedEmployees}
         onConfirm={confirmAssign}
+        employees={availableEmployees}
       />
 
       {/* Create order dialog */}
