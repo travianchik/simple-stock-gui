@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useMemo } from "react";
 import PageHeader from "@/components/PageHeader";
 import StatusBadge from "@/components/StatusBadge";
 import { Button } from "@/components/ui/button";
@@ -60,13 +60,7 @@ interface Order {
   boxes: Box[];
 }
 
-const availableEmployees = [
-  { id: "e1", name: "Иванов А.В.", scanner: "SC-001" },
-  { id: "e2", name: "Петров К.М.", scanner: "SC-002" },
-  { id: "e3", name: "Сидоров В.Д.", scanner: "SC-003" },
-  { id: "e4", name: "Козлов Д.А.", scanner: "SC-004" },
-  { id: "e5", name: "Фёдорова Е.С.", scanner: "SC-005" },
-];
+interface AvailableEmployee { id: string; name: string; scanner: string; }
 
 function generateLabels(count: number, brand: string): LabelItem[] {
   const articles = ["ART-100", "ART-200", "ART-300", "ART-400"];
@@ -138,7 +132,13 @@ const initialOrders: Order[] = [
 ];
 
 const ReceivingPage = () => {
-  const { currentUser, updateUser } = useRoles();
+  const { currentUser, updateUser, users } = useRoles();
+  const availableEmployees: AvailableEmployee[] = useMemo(() =>
+    users
+      .filter(u => u.role === "employee")
+      .map(u => ({ id: String(u.id), name: u.name, scanner: u.scanner })),
+    [users]
+  );
   const { addBoxes, uploadedOrderIds, markOrderUploaded } = useStock();
   const { notifyAssignment, unseenFor, markSeen, markAllSeenFor } = useNotifications();
   const myUnseen = currentUser.role === "employee" ? unseenFor(currentUser.name) : [];
@@ -667,6 +667,7 @@ const ReceivingPage = () => {
           selected={selectedEmployees}
           setSelected={setSelectedEmployees}
           onConfirm={confirmAssign}
+          employees={availableEmployees}
         />
 
       </div>
@@ -1025,13 +1026,14 @@ const ReceivingPage = () => {
 
 // --- Assign Dialog Component ---
 function AssignDialog({
-  open, onClose, selected, setSelected, onConfirm,
+  open, onClose, selected, setSelected, onConfirm, employees,
 }: {
   open: boolean;
   onClose: () => void;
   selected: string[];
   setSelected: (v: string[]) => void;
   onConfirm: () => void;
+  employees: { id: string; name: string; scanner: string }[];
 }) {
   const toggle = (name: string) => {
     setSelected(
@@ -1046,7 +1048,10 @@ function AssignDialog({
           <DialogTitle>Назначить сотрудников</DialogTitle>
         </DialogHeader>
         <div className="space-y-2 max-h-60 overflow-auto">
-          {availableEmployees.map(emp => (
+          {employees.length === 0 && (
+            <div className="text-sm text-muted-foreground p-2">Нет доступных сотрудников. Добавьте их в разделе «Роли».</div>
+          )}
+          {employees.map(emp => (
             <label
               key={emp.id}
               className="flex items-center gap-3 p-2 rounded-md hover:bg-muted/50 cursor-pointer"
