@@ -406,6 +406,7 @@ const StockPage = () => {
                   <TableHead className="text-xs font-medium">Бренд</TableHead>
                   <TableHead className="text-xs font-medium">ИП</TableHead>
                   <TableHead className="text-xs font-medium">Маркетплейс</TableHead>
+                  <TableHead className="text-xs font-medium">Ячейка</TableHead>
                   <TableHead className="text-xs font-medium">Дата приёмки</TableHead>
                   <TableHead className="text-xs font-medium">Статус</TableHead>
                   {inventoryMode && !inventoryFinished && <TableHead className="text-xs font-medium w-16"></TableHead>}
@@ -442,6 +443,7 @@ const StockPage = () => {
                           <TableCell className="text-sm">{box.brand}</TableCell>
                           <TableCell className="text-sm text-muted-foreground">{box.ip}</TableCell>
                           <TableCell className="text-sm">{box.marketplace}</TableCell>
+                          <TableCell className="text-sm font-mono">{box.cell || "—"}</TableCell>
                           <TableCell className="text-sm text-muted-foreground">{box.dateReceived}</TableCell>
                           <TableCell><StatusBadge status={status.type} label={status.label} /></TableCell>
                           {inventoryMode && !inventoryFinished && (
@@ -456,7 +458,7 @@ const StockPage = () => {
                         </TableRow>
                         <CollapsibleContent asChild>
                           <tr>
-                            <td colSpan={inventoryMode && !inventoryFinished ? 11 : 10} className="p-0">
+                            <td colSpan={inventoryMode && !inventoryFinished ? 12 : 11} className="p-0">
                               <div className="bg-muted/20 border-t border-border px-8 py-3">
                                 <p className="text-xs font-medium text-muted-foreground mb-2">Наполнение короба {box.boxNumber}</p>
                                 <Table>
