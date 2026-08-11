@@ -6,10 +6,13 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { RoleProvider } from "./contexts/RoleContext";
 import { StockProvider } from "./contexts/StockContext";
 import { NotificationsProvider } from "./contexts/NotificationsContext";
+import { WarehouseProvider } from "./contexts/WarehouseContext";
 import AppLayout from "./components/AppLayout";
 import StockPage from "./pages/StockPage";
 import ReceivingPage from "./pages/ReceivingPage";
+import ReceiptOrdersPage from "./pages/ReceiptOrdersPage";
 import ShippingPage from "./pages/ShippingPage";
+import FbsShippingPage from "./pages/FbsShippingPage";
 import ReturnsPage from "./pages/ReturnsPage";
 import RolesPage from "./pages/RolesPage";
 import NotFound from "./pages/NotFound";
@@ -24,18 +27,22 @@ const App = () => (
       <BrowserRouter>
         <RoleProvider>
           <StockProvider>
+          <WarehouseProvider>
           <NotificationsProvider>
           <Routes>
             <Route element={<AppLayout />}>
               <Route path="/" element={<StockPage />} />
               <Route path="/receiving" element={<ReceivingPage />} />
+              <Route path="/receipt-orders" element={<ReceiptOrdersPage />} />
               <Route path="/shipping" element={<ShippingPage />} />
+              <Route path="/fbs" element={<FbsShippingPage />} />
               <Route path="/returns" element={<ReturnsPage />} />
               <Route path="/roles" element={<RolesPage />} />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>
           </NotificationsProvider>
+          </WarehouseProvider>
           </StockProvider>
         </RoleProvider>
       </BrowserRouter>
