@@ -10,6 +10,8 @@ import {
   ChevronRight,
   Warehouse,
   UserCircle,
+  ClipboardCheck,
+  QrCode,
 } from "lucide-react";
 import { useRoles, roleLabels } from "@/contexts/RoleContext";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -19,7 +21,9 @@ import { roleStatus } from "@/contexts/RoleContext";
 const allNavItems = [
   { path: "/", label: "Сток / Инвентаризация", icon: Package },
   { path: "/receiving", label: "Приёмка товара", icon: ClipboardList },
+  { path: "/receipt-orders", label: "Ордера приёмки", icon: ClipboardCheck },
   { path: "/shipping", label: "Отгрузка товара", icon: Truck },
+  { path: "/fbs", label: "Отгрузка FBS / FBO", icon: QrCode },
   { path: "/returns", label: "Возврат товара", icon: RotateCcw },
   { path: "/roles", label: "Управление ролями", icon: Users },
 ];
