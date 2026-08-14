@@ -47,6 +47,7 @@ const FbsShippingPage = () => {
   /* --- В сборке --- */
   const [openSupply, setOpenSupply] = useState<Supply | null>(null);
   const [kizValue, setKizValue] = useState("");
+  const [emulating, setEmulating] = useState(false);
 
   /* --- Завершённые --- */
   const [doneSelected, setDoneSelected] = useState<number[]>([]);
@@ -117,6 +118,50 @@ const FbsShippingPage = () => {
     const res = attachKiz(liveSupply.id, kizValue);
     toast({ title: res.ok ? "КИЗ добавлен в поставку" : "Не найдено", description: res.message, variant: res.ok ? undefined : "destructive" });
     if (res.ok) setKizValue("");
+  };
+
+  /* --- Эмуляция сканера КИЗ --- */
+  const rnd = (n: number) => Array.from({ length: n }, () => Math.floor(Math.random() * 10)).join("");
+  const genKiz = (o: FbsOrder) => `01046${o.shk}21${rnd(6)}\u001d93${rnd(4)}`;
+
+  const emulateScan = async (order?: FbsOrder) => {
+    if (!liveSupply || emulating) return;
+    const target = order ?? supplyOrders.find((o) => !o.kiz);
+    if (!target) {
+      toast({ title: "Все КИЗы уже привязаны", description: "Нет заданий без КИЗа." });
+      return;
+    }
+    const code = genKiz(target);
+    setEmulating(true);
+    // печатаем код «по символам», как это делает сканер
+    for (let i = 1; i <= code.length; i += 4) {
+      setKizValue(code.slice(0, i));
+      await new Promise((r) => setTimeout(r, 12));
+    }
+    setKizValue(code);
+    await new Promise((r) => setTimeout(r, 150));
+    const res = attachKiz(liveSupply.id, code);
+    toast({
+      title: res.ok ? "КИЗ отсканирован (эмуляция)" : "Не найдено",
+      description: res.message,
+      variant: res.ok ? undefined : "destructive",
+    });
+    if (res.ok) setKizValue("");
+    setEmulating(false);
+  };
+
+  const emulateScanAll = async () => {
+    if (!liveSupply || emulating) return;
+    const pending = supplyOrders.filter((o) => !o.kiz);
+    if (!pending.length) {
+      toast({ title: "Все КИЗы уже привязаны" });
+      return;
+    }
+    for (const o of pending) {
+      await emulateScan(o);
+      await new Promise((r) => setTimeout(r, 120));
+    }
+    toast({ title: "Эмуляция завершена", description: `Отсканировано КИЗов: ${pending.length}` });
   };
 
   const generateUpd = () => {
@@ -483,10 +528,17 @@ const FbsShippingPage = () => {
                     onChange={(e) => setKizValue(e.target.value)}
                     onKeyDown={(e) => e.key === "Enter" && handleKiz()}
                   />
-                  <Button onClick={handleKiz}><ScanLine className="w-4 h-4 mr-2" /> Добавить</Button>
+                  <Button onClick={handleKiz} disabled={emulating}><ScanLine className="w-4 h-4 mr-2" /> Добавить</Button>
+                  <Button variant="outline" onClick={() => emulateScan()} disabled={emulating}>
+                    <ScanLine className={`w-4 h-4 mr-2 ${emulating ? "animate-pulse" : ""}`} /> Эмулировать скан
+                  </Button>
+                  <Button variant="secondary" onClick={emulateScanAll} disabled={emulating}>
+                    Скан всех
+                  </Button>
                 </div>
                 <p className="text-[11px] text-muted-foreground">
                   По КИЗу определяем товар и привязываем к заданию по совпадению ШК / артикула / размера.
+                  Кнопки эмуляции генерируют КИЗ в формате GS1 (01…21…93…) и «сканируют» его вместо физического сканера.
                 </p>
               </div>
 
@@ -512,6 +564,9 @@ const FbsShippingPage = () => {
                         <StatusBadge status={o.stickerPrinted ? "success" : "default"} label={o.stickerPrinted ? "Напечатан" : "Нет"} />
                       </td>
                       <td className="px-3 py-2 text-right">
+                        <Button size="sm" variant="ghost" disabled={!!o.kiz || emulating} onClick={() => emulateScan(o)}>
+                          <ScanLine className="w-4 h-4 mr-1" /> Скан КИЗ
+                        </Button>
                         <Button size="sm" variant="ghost" disabled={!o.kiz} onClick={() => { printSticker(o.id); toast({ title: "Стикер WB отправлен на печать", description: `${o.article} · ${o.size}` }); }}>
                           <Printer className="w-4 h-4 mr-1" /> Печать стикера
                         </Button>
