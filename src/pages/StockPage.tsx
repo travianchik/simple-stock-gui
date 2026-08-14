@@ -1,663 +1,410 @@
-import { useState, useMemo } from "react";
+import { useMemo, useRef, useState } from "react";
+import * as XLSX from "xlsx";
+import { Download, Upload, RefreshCw, Search, ScanLine, Boxes, FileSpreadsheet } from "lucide-react";
 import PageHeader from "@/components/PageHeader";
 import StatusBadge from "@/components/StatusBadge";
+import UplLabel from "@/components/UplLabel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from "@/components/ui/table";
-import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
-} from "@/components/ui/dialog";
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
-import {
-  Collapsible, CollapsibleContent, CollapsibleTrigger,
-} from "@/components/ui/collapsible";
-import { Search, ScanLine, Download, Package, CircleCheck as CheckCircle2, Circle as XCircle, TriangleAlert as AlertTriangle, Plus, ChevronDown, ChevronRight, Box } from "lucide-react";
-import { toast } from "sonner";
-import * as XLSX from "xlsx";
-import { useStock, StockBox, SKUItem } from "@/contexts/StockContext";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useToast } from "@/hooks/use-toast";
+import { useOrbita, type StockRow, type UplBox } from "@/contexts/OrbitaContext";
 
-type TabView = "boxes" | "sku";
+const TEMPLATE_HEADERS = [
+  "Артикул",
+  "Размер",
+  "Наименование",
+  "ШК",
+  "GTIN",
+  "Артикул WB/Ozon",
+  "Единица хранения",
+  "Количество",
+];
+
+const num = (v: unknown) => {
+  if (typeof v === "number") return v;
+  const s = String(v ?? "").replace(/\s/g, "").replace(",", ".");
+  const n = Number.parseFloat(s);
+  return Number.isFinite(n) ? Math.round(n) : 0;
+};
 
 const StockPage = () => {
-  const [activeTab, setActiveTab] = useState<TabView>("boxes");
+  const { stockComputed, importStock, lastWbSync, syncStockToWb, boxes, findBoxByBarcode } = useOrbita();
+  const { toast } = useToast();
+  const fileRef = useRef<HTMLInputElement>(null);
+
   const [search, setSearch] = useState("");
-  const [brandFilter, setBrandFilter] = useState("all");
-  const [ipFilter, setIpFilter] = useState("all");
-  const [mpFilter, setMpFilter] = useState("all");
-  const [inventoryMode, setInventoryMode] = useState(false);
-  const [inventoryFinished, setInventoryFinished] = useState(false);
-  const [scannedIds, setScannedIds] = useState<number[]>([]);
-  const [scanInput, setScanInput] = useState("");
-  const { boxes, setBoxes } = useStock();
-  const [expandedBoxes, setExpandedBoxes] = useState<Set<number>>(new Set());
-  const [addDialogOpen, setAddDialogOpen] = useState(false);
-  const [addBarcode, setAddBarcode] = useState("");
-  const [addPreview, setAddPreview] = useState<{ kind: "box" | "sku"; label: string; detail: string } | null>(null);
-  const [scannedSkuIds, setScannedSkuIds] = useState<Set<string>>(new Set());
+  const [articleFilter, setArticleFilter] = useState("all");
+  const [scanOpen, setScanOpen] = useState(false);
+  const [scanCode, setScanCode] = useState("");
+  const [foundBox, setFoundBox] = useState<UplBox | null>(null);
+  const [boxDialog, setBoxDialog] = useState<UplBox | null>(null);
 
-  const brands = useMemo(() => [...new Set(boxes.map((b) => b.brand))], [boxes]);
-  const ips = useMemo(() => [...new Set(boxes.map((b) => b.ip))], [boxes]);
-  const mps = useMemo(() => [...new Set(boxes.map((b) => b.marketplace))], [boxes]);
-
-  const filteredBoxes = useMemo(
-    () =>
-      boxes.filter((box) => {
-        const s = search.toLowerCase();
-        const matchSearch =
-          box.boxNumber.toLowerCase().includes(s) ||
-          box.upd.toLowerCase().includes(s) ||
-          box.brand.toLowerCase().includes(s) ||
-          box.items.some((i) => i.barcode.includes(search) || i.articleSeller.toLowerCase().includes(s));
-        const matchBrand = brandFilter === "all" || box.brand === brandFilter;
-        const matchIp = ipFilter === "all" || box.ip === ipFilter;
-        const matchMp = mpFilter === "all" || box.marketplace === mpFilter;
-        return matchSearch && matchBrand && matchIp && matchMp;
-      }),
-    [search, brandFilter, ipFilter, mpFilter, boxes]
+  const articles = useMemo(
+    () => Array.from(new Set(stockComputed.map((r) => r.article))).sort(),
+    [stockComputed]
   );
 
-  // All SKU items flat
-  const allSKU = useMemo(() => {
-    return boxes.flatMap((box) =>
-      box.items.map((item) => ({ ...item, boxNumber: box.boxNumber, boxId: box.id }))
-    );
-  }, [boxes]);
-
-  const filteredSKU = useMemo(() => {
-    return allSKU.filter((item) => {
-      const s = search.toLowerCase();
-      const matchSearch =
-        item.article.toLowerCase().includes(s) ||
-        item.articleSeller.toLowerCase().includes(s) ||
-        item.name.toLowerCase().includes(s) ||
-        item.barcode.includes(search) ||
-        item.brand.toLowerCase().includes(s);
-      const matchBrand = brandFilter === "all" || item.brand === brandFilter;
-      const matchMp = mpFilter === "all" || item.marketplace === mpFilter;
-      return matchSearch && matchBrand && matchMp;
+  const rows = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return stockComputed.filter((r) => {
+      const okArticle = articleFilter === "all" || r.article === articleFilter;
+      const okSearch =
+        !q ||
+        [r.article, r.name, r.shk, r.gtin, r.wbArticle, r.size].some((f) => String(f).toLowerCase().includes(q));
+      return okArticle && okSearch;
     });
-  }, [allSKU, search, brandFilter, mpFilter]);
+  }, [stockComputed, search, articleFilter]);
 
-  const toggleBox = (id: number) => {
-    setExpandedBoxes((prev) => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
-  };
+  const totals = useMemo(
+    () => ({
+      total: rows.reduce((s, r) => s + r.total, 0),
+      reserved: rows.reduce((s, r) => s + r.reserved, 0),
+      shipped: rows.reduce((s, r) => s + r.shipped, 0),
+      available: rows.reduce((s, r) => s + r.available, 0),
+      deficit: rows.reduce((s, r) => s + r.deficit, 0),
+    }),
+    [rows]
+  );
 
-  const handleScan = (id: number) => {
-    setScannedIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
-  };
-
-  const handleScanSku = (id: string) => {
-    setScannedSkuIds((prev) => {
-      if (prev.has(id)) return prev;
-      const next = new Set(prev);
-      next.add(id);
-      return next;
-    });
-  };
-
-  const handleBarcodeScan = () => {
-    const code = scanInput.trim();
-    if (!code) return;
-    if (activeTab === "boxes") {
-      const found = boxes.find(
-        (box) =>
-          box.upd.toLowerCase() === code.toLowerCase() ||
-          box.boxNumber.toLowerCase() === code.toLowerCase() ||
-          box.items.some((i) => i.barcode === code)
-      );
-      if (found) { handleScan(found.id); setScanInput(""); }
-      else toast.error("Коробка не найдена");
-    } else {
-      // SKU mode: match by barcode OR ChZ code
-      let matchedId: string | null = null;
-      for (const box of boxes) {
-        for (const item of box.items) {
-          const baseId = `${box.id}:${item.barcode}`;
-          if (item.barcode === code) matchedId = baseId;
-          if (item.chzCodes?.some((c) => c === code)) matchedId = `${baseId}:${code}`;
-          if (matchedId) break;
-        }
-        if (matchedId) break;
-      }
-      if (matchedId) { handleScanSku(matchedId); setScanInput(""); }
-      else toast.error("Единица не найдена");
-    }
-  };
-
-  const startInventory = () => {
-    setInventoryMode(true); setInventoryFinished(false);
-    setScannedIds([]); setScannedSkuIds(new Set());
-  };
-  const finishInventory = () => { setInventoryFinished(true); };
-  const resetInventory = () => {
-    setInventoryMode(false); setInventoryFinished(false);
-    setScannedIds([]); setScannedSkuIds(new Set());
-  };
-
-  const getBoxStatus = (box: StockBox) => {
-    if (!inventoryMode) return { label: "На складе", type: "success" as const };
-    if (scannedIds.includes(box.id)) return { label: "На складе", type: "success" as const };
-    if (inventoryFinished) return { label: "Нет на складе", type: "error" as const };
-    return { label: "Не проверен", type: "default" as const };
-  };
-
-  const getSkuStatus = (skuKey: string) => {
-    if (!inventoryMode) return { label: "На складе", type: "success" as const };
-    if (scannedSkuIds.has(skuKey)) return { label: "На складе", type: "success" as const };
-    if (inventoryFinished) return { label: "Нет на складе", type: "error" as const };
-    return { label: "Не проверен", type: "default" as const };
-  };
-
-  // Count of SKU rows (expanded per-unit when ChZ present)
-  const totalSkuRows = useMemo(() => {
-    let n = 0;
-    for (const box of boxes) for (const item of box.items) {
-      n += item.chzCodes?.length ? item.chzCodes.length : 1;
-    }
-    return n;
-  }, [boxes]);
-
-  const notScannedCount = inventoryMode
-    ? (activeTab === "boxes" ? boxes.length - scannedIds.length : totalSkuRows - scannedSkuIds.size)
-    : 0;
-  const scannedCount = inventoryMode
-    ? (activeTab === "boxes" ? scannedIds.length : scannedSkuIds.size)
-    : 0;
-
-  // Excel export — two sheets: Коробки и Единицы
-  const exportExcel = () => {
-    const boxRows = boxes.map((box) => ({
-      "№ Короба": box.boxNumber,
-      "Упаковочный лист": box.upd,
-      "Количество": box.qty,
-      "Бренд": box.brand,
-      "ИП": box.ip,
-      "Маркетплейс": box.marketplace,
-      "Дата приёмки": box.dateReceived,
-      "Статус": box.status === "on_stock" ? "На складе" : box.status,
-    }));
-    const skuRows = boxes.flatMap((box) =>
-      box.items.flatMap((item) => {
-        if (item.chzCodes && item.chzCodes.length > 0) {
-          return item.chzCodes.map((code) => ({
-            "Артикул WB/Ozon": item.article,
-            "Артикул продавца": item.articleSeller,
-            "Бренд": item.brand,
-            "Размер": item.size || "—",
-            "Количество": 1,
-            "Баркод": item.barcode,
-            "Честный знак": code,
-            "Тип": "единица",
-            "Дата приёмки": item.dateReceived,
-            "№ Короба": box.boxNumber,
-          }));
-        }
-        return [{
-          "Артикул WB/Ozon": item.article,
-          "Артикул продавца": item.articleSeller,
-          "Бренд": item.brand,
-          "Размер": item.size || "—",
-          "Количество": item.qty,
-          "Баркод": item.barcode,
-          "Честный знак": "",
-          "Тип": item.kind === "set" ? `набор (${item.setSize ?? ""} шт)` : "единица",
-          "Дата приёмки": item.dateReceived,
-          "№ Короба": box.boxNumber,
-        }];
-      })
-    );
+  /* ---------- Скачать пример ---------- */
+  const downloadTemplate = () => {
+    const example = [
+      TEMPLATE_HEADERS,
+      ["FAPPE/БРАЗ_КРУЖК/466С", "2XL", "Комплект трусов женских FAPPE/БРАЗ_КРУЖК/466С", "4610547700972", "4610547700972", "288015345", "шт", 552],
+      ["FAPPE/БРАЗ_КРУЖК/466С", "M", "Комплект трусов женских FAPPE/БРАЗ_КРУЖК/466С", "2041941632583", "4660546067903", "288015345", "шт", 2694],
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(example);
+    ws["!cols"] = TEMPLATE_HEADERS.map(() => ({ wch: 26 }));
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(boxRows), "Коробки");
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(skuRows), "Единицы");
-    XLSX.writeFile(wb, `Сток_${new Date().toLocaleDateString("ru-RU")}.xlsx`);
-    toast.success("Excel файл скачан");
+    XLSX.utils.book_append_sheet(wb, ws, "Сток");
+    XLSX.writeFile(wb, "Пример_загрузки_стока.xlsx");
+    toast({ title: "Шаблон скачан", description: "Заполните файл и нажмите «Загрузить сток»." });
   };
 
-  // --- Добавить товар: сканирование штрихкода/ЧЗ ---
-  const handleAddLookup = () => {
-    const code = addBarcode.trim();
-    if (!code) return;
-    // Проверка на совпадение с упаковочным листом (коробка)
-    const existingBox = boxes.find((b) => b.upd.toLowerCase() === code.toLowerCase());
-    if (existingBox) {
-      setAddPreview({ kind: "box", label: `Коробка ${existingBox.boxNumber}`, detail: `${existingBox.upd} уже есть в Стоке` });
-      return;
-    }
-    // Предпросмотр: тип определяется по формату
-    if (code.startsWith("УПЛ") || code.startsWith("PACK")) {
-      setAddPreview({ kind: "box", label: `Новая коробка`, detail: `Упаковочный лист: ${code}` });
-    } else if (code.length > 20) {
-      setAddPreview({ kind: "sku", label: "Единица с Честным знаком", detail: `Код ЧЗ: ${code}` });
-    } else {
-      setAddPreview({ kind: "sku", label: "Единица", detail: `Штрих-код: ${code}` });
+  /* ---------- Загрузить сток ---------- */
+  const handleUpload = async (file: File) => {
+    try {
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf);
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const raw = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: "" });
+      const parsed: Omit<StockRow, "id">[] = raw
+        .map((r) => {
+          const get = (...keys: string[]) => {
+            for (const k of keys) {
+              const found = Object.keys(r).find((rk) => rk.toLowerCase().includes(k.toLowerCase()));
+              if (found && String(r[found]).trim() !== "") return String(r[found]).trim();
+            }
+            return "";
+          };
+          return {
+            article: get("Артикул продавца", "Номенклатура.Артикул", "Артикул"),
+            size: get("Размер", "Характеристика"),
+            name: get("Наименование", "Номенклатура"),
+            shk: get("ШК", "Баркод"),
+            gtin: get("GTIN"),
+            wbArticle: get("Артикул WB", "Артикул WB/Ozon", "Ozon"),
+            unit: get("Единица хранения", "Ед") || "шт",
+            total: num(get("Количество", "В наличии Всего", "Всего")),
+          };
+        })
+        .filter((r) => r.shk || r.article);
+
+      if (!parsed.length) {
+        toast({ title: "Файл пустой", description: "Не найдено ни одной строки товара.", variant: "destructive" });
+        return;
+      }
+      const res = importStock(parsed);
+      toast({
+        title: "Сток загружен",
+        description: `Новых строк: ${res.added}. Совпало по ШК (количество суммировано): ${res.merged}.`,
+      });
+    } catch {
+      toast({ title: "Ошибка чтения файла", description: "Ожидается файл Excel по шаблону.", variant: "destructive" });
     }
   };
 
-  const handleAddConfirm = () => {
-    if (!addPreview) return;
-    const code = addBarcode.trim();
-    const today = new Date().toLocaleDateString("ru-RU");
-    if (addPreview.kind === "box") {
-      const newBox: StockBox = {
-        id: Date.now(), boxNumber: `КРБ-${String(Date.now()).slice(-3)}`,
-        upd: code, qty: 0, brand: "—", dateReceived: today,
-        status: "on_stock", ip: "—", marketplace: "—", items: [],
-      };
-      setBoxes((prev) => [newBox, ...prev]);
-      toast.success(`Упаковочный лист ${code} добавлен`);
-    } else {
-      // единица — добавим как виртуальную коробку без упаковочного листа с одним товаром
-      const isChz = code.length > 20;
-      const newBox: StockBox = {
-        id: Date.now(), boxNumber: `БК-${String(Date.now()).slice(-3)}`,
-        upd: "—", qty: 1, brand: "—", dateReceived: today, status: "on_stock",
-        ip: "—", marketplace: "—",
-        items: [{
-          article: "—", articleSeller: "—", name: isChz ? "Единица (по ЧЗ)" : "Единица (по баркоду)",
-          qty: 1, barcode: isChz ? String(Date.now()) : code, brand: "—",
-          chzCodes: isChz ? [code] : undefined, dateReceived: today, kind: "unit",
-        }],
-      };
-      setBoxes((prev) => [newBox, ...prev]);
-      toast.success(`Единица добавлена`);
-    }
-    setAddBarcode(""); setAddPreview(null); setAddDialogOpen(false);
+  const exportStock = () => {
+    const data = rows.map((r) => ({
+      Характеристика: r.size,
+      "Номенклатура.Артикул": r.article,
+      ШК: r.shk,
+      GTIN: r.gtin,
+      "Артикул WB": r.wbArticle,
+      Номенклатура: r.name,
+      "Единица хранения": r.unit,
+      Всего: r.total,
+      "В резерве": r.reserved,
+      Отгрузка: r.shipped,
+      Доступно: r.available,
+      "К обеспечению": r.toProvide,
+      Дефицит: r.deficit || "",
+      Излишек: r.surplus || "",
+    }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(data), "Сток");
+    XLSX.writeFile(wb, "Сток.xlsx");
+  };
+
+  const doScan = () => {
+    const box = findBoxByBarcode(scanCode);
+    setFoundBox(box ?? null);
+    if (!box) toast({ title: "УПЛ не найден", description: "Проверьте штрихкод упаковочного листа.", variant: "destructive" });
   };
 
   return (
     <div className="flex flex-col h-full">
       <PageHeader
-        title="Сток / Инвентаризация"
-        description="Общий список остатков товара на складе"
+        title="Сток"
+        description={
+          lastWbSync
+            ? `Остатки переданы на WB: ${lastWbSync} (из столбца «Доступно»)`
+            : "Остатки товара на складе с динамическими столбцами по FBS"
+        }
         actions={
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={exportExcel}>
-              <Download className="w-4 h-4 mr-2" />
-              Скачать Excel
+          <>
+            <input
+              ref={fileRef}
+              type="file"
+              accept=".xlsx,.xls,.csv"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) handleUpload(f);
+                e.target.value = "";
+              }}
+            />
+            <Button variant="outline" size="sm" onClick={downloadTemplate}>
+              <FileSpreadsheet className="w-4 h-4 mr-2" /> Скачать пример
             </Button>
-            <Button variant="outline" size="sm" onClick={() => setAddDialogOpen(true)}>
-              <Plus className="w-4 h-4 mr-2" />
-              Добавить товар
+            <Button size="sm" onClick={() => fileRef.current?.click()}>
+              <Upload className="w-4 h-4 mr-2" /> Загрузить сток
             </Button>
-            {inventoryMode ? (
-              inventoryFinished ? (
-                <Button variant="outline" size="sm" onClick={resetInventory}>Сбросить</Button>
-              ) : (
-                <Button variant="default" size="sm" onClick={finishInventory}>
-                  <CheckCircle2 className="w-4 h-4 mr-1" />
-                  Завершить инвентаризацию
-                </Button>
-              )
-            ) : (
-              <Button variant="outline" size="sm" onClick={startInventory}>
-                <ScanLine className="w-4 h-4 mr-2" />
-                Инвентаризация
-              </Button>
-            )}
-          </div>
+            <Button variant="outline" size="sm" onClick={() => { syncStockToWb(); toast({ title: "Остатки отправлены на WB", description: "Переданы значения столбца «Доступно» на все склады продавца." }); }}>
+              <RefreshCw className="w-4 h-4 mr-2" /> Обновить остатки на WB
+            </Button>
+            <Button variant="outline" size="sm" onClick={exportStock}>
+              <Download className="w-4 h-4 mr-2" /> Скачать Excel
+            </Button>
+          </>
         }
       />
 
-      <div className="p-6 space-y-4 flex-1 overflow-auto">
-        {/* Tab switcher */}
-        <div className="flex items-center gap-2 border-b border-border pb-3">
-          <Button
-            variant={activeTab === "boxes" ? "default" : "ghost"}
-            size="sm"
-            onClick={() => setActiveTab("boxes")}
-          >
-            <Box className="w-4 h-4 mr-1.5" />
-            Короба
-          </Button>
-          <Button
-            variant={activeTab === "sku" ? "default" : "ghost"}
-            size="sm"
-            onClick={() => setActiveTab("sku")}
-          >
-            <Package className="w-4 h-4 mr-1.5" />
-            Единицы SKU
-          </Button>
-        </div>
+      <div className="flex-1 overflow-auto p-6">
+        <Tabs defaultValue="stock">
+          <TabsList>
+            <TabsTrigger value="stock">Остатки</TabsTrigger>
+            <TabsTrigger value="boxes">Короба / УПЛ</TabsTrigger>
+          </TabsList>
 
-        {/* Filters */}
-        <div className="flex items-center gap-3 flex-wrap">
-          <div className="relative max-w-xs flex-1 min-w-[200px]">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input placeholder="Поиск..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
-          </div>
-          {activeTab === "boxes" && (
-            <Select value={ipFilter} onValueChange={setIpFilter}>
-              <SelectTrigger className="w-[200px]"><SelectValue placeholder="ИП" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Все ИП</SelectItem>
-                {ips.map((ip) => <SelectItem key={ip} value={ip}>{ip}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          )}
-          <Select value={mpFilter} onValueChange={setMpFilter}>
-            <SelectTrigger className="w-[180px]"><SelectValue placeholder="Маркетплейс" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Все МП</SelectItem>
-              {mps.map((mp) => <SelectItem key={mp} value={mp}>{mp}</SelectItem>)}
-            </SelectContent>
-          </Select>
-          <Select value={brandFilter} onValueChange={setBrandFilter}>
-            <SelectTrigger className="w-[180px]"><SelectValue placeholder="Бренд" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Все бренды</SelectItem>
-              {brands.map((b) => <SelectItem key={b} value={b}>{b}</SelectItem>)}
-            </SelectContent>
-          </Select>
-        </div>
-
-        {/* Inventory scan bar */}
-        {inventoryMode && !inventoryFinished && (
-          <div className="flex items-center gap-3 p-4 rounded-lg border border-primary/30 bg-primary/5">
-            <ScanLine className="w-5 h-5 text-primary" />
-            <span className="text-sm font-medium">
-              Инвентаризация: {activeTab === "boxes" ? "коробки" : "единицы"}
-            </span>
-            <Input
-              placeholder={activeTab === "boxes" ? "Сканируйте упаковочный лист..." : "Сканируйте штрих-код или ЧЗ..."}
-              value={scanInput}
-              onChange={(e) => setScanInput(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleBarcodeScan()}
-              className="max-w-xs"
-              autoFocus
-            />
-            <Button size="sm" variant="secondary" onClick={handleBarcodeScan}>Найти</Button>
-            <div className="ml-auto flex items-center gap-3 text-sm">
-              <Badge variant="secondary" className="gap-1"><CheckCircle2 className="w-3 h-3" />{scannedCount} найдено</Badge>
-              <Badge variant="destructive" className="gap-1"><XCircle className="w-3 h-3" />{notScannedCount} не проверено</Badge>
-            </div>
-          </div>
-        )}
-
-        {inventoryMode && inventoryFinished && (
-          <div className="flex items-center gap-4 p-4 rounded-lg border border-border bg-card">
-            <AlertTriangle className="w-5 h-5 text-warning" />
-            <div className="text-sm">
-              <span className="font-medium">Инвентаризация завершена. </span>
-              <span className="text-success font-medium">{scannedCount} на складе</span>
-              {notScannedCount > 0 && <span className="text-destructive font-medium ml-2">{notScannedCount} не найдено</span>}
-            </div>
-          </div>
-        )}
-
-        {/* ===== TAB: BOXES ===== */}
-        {activeTab === "boxes" && (
-          <div className="rounded-lg border border-border bg-card overflow-hidden">
-            <Table>
-              <TableHeader>
-                <TableRow className="bg-muted/50">
-                  <TableHead className="text-xs font-medium w-8"></TableHead>
-                  <TableHead className="text-xs font-medium">№ Короба</TableHead>
-                  <TableHead className="text-xs font-medium">Упаковочный лист</TableHead>
-                  <TableHead className="text-xs font-medium text-right">Кол-во</TableHead>
-                  <TableHead className="text-xs font-medium">Бренд</TableHead>
-                  <TableHead className="text-xs font-medium">ИП</TableHead>
-                  <TableHead className="text-xs font-medium">Маркетплейс</TableHead>
-                  <TableHead className="text-xs font-medium">Ячейка</TableHead>
-                  <TableHead className="text-xs font-medium">Дата приёмки</TableHead>
-                  <TableHead className="text-xs font-medium">Статус</TableHead>
-                  {inventoryMode && !inventoryFinished && <TableHead className="text-xs font-medium w-16"></TableHead>}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredBoxes.map((box) => {
-                  const status = getBoxStatus(box);
-                  const scanned = scannedIds.includes(box.id);
-                  const isExpanded = expandedBoxes.has(box.id);
-                  return (
-                    <Collapsible key={box.id} asChild open={isExpanded} onOpenChange={() => toggleBox(box.id)}>
-                      <>
-                        <TableRow
-                          className={inventoryMode ? (scanned ? "bg-success/5" : inventoryFinished ? "bg-destructive/5" : "") : "cursor-pointer hover:bg-muted/30"}
-                        >
-                          <TableCell>
-                            <CollapsibleTrigger asChild>
-                              <button className="p-1 hover:bg-muted rounded">
-                                {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-                              </button>
-                            </CollapsibleTrigger>
-                          </TableCell>
-                          <TableCell>
-                            <CollapsibleTrigger asChild>
-                              <button className="flex items-center gap-1.5 font-mono text-sm text-primary hover:underline">
-                                <Box className="w-3.5 h-3.5" />
-                                {box.boxNumber}
-                              </button>
-                            </CollapsibleTrigger>
-                          </TableCell>
-                          <TableCell className="text-sm font-mono text-muted-foreground">{box.upd}</TableCell>
-                          <TableCell className="text-sm text-right font-medium">{box.qty}</TableCell>
-                          <TableCell className="text-sm">{box.brand}</TableCell>
-                          <TableCell className="text-sm text-muted-foreground">{box.ip}</TableCell>
-                          <TableCell className="text-sm">{box.marketplace}</TableCell>
-                          <TableCell className="text-sm font-mono">{box.cell || "—"}</TableCell>
-                          <TableCell className="text-sm text-muted-foreground">{box.dateReceived}</TableCell>
-                          <TableCell><StatusBadge status={status.type} label={status.label} /></TableCell>
-                          {inventoryMode && !inventoryFinished && (
-                            <TableCell>
-                              {!scanned && (
-                                <Button variant="ghost" size="sm" onClick={() => handleScan(box.id)} title="Отметить">
-                                  <ScanLine className="w-4 h-4" />
-                                </Button>
-                              )}
-                            </TableCell>
-                          )}
-                        </TableRow>
-                        <CollapsibleContent asChild>
-                          <tr>
-                            <td colSpan={inventoryMode && !inventoryFinished ? 12 : 11} className="p-0">
-                              <div className="bg-muted/20 border-t border-border px-8 py-3">
-                                <p className="text-xs font-medium text-muted-foreground mb-2">Наполнение короба {box.boxNumber}</p>
-                                <Table>
-                                  <TableHeader>
-                                    <TableRow>
-                                      <TableHead className="text-xs">Артикул</TableHead>
-                                      <TableHead className="text-xs">Наименование</TableHead>
-                                      <TableHead className="text-xs">Размер</TableHead>
-                                      <TableHead className="text-xs text-right">Кол-во</TableHead>
-                                      <TableHead className="text-xs">Баркод</TableHead>
-                                      {box.items.some((i) => i.chzCodes?.length) && <TableHead className="text-xs">Честный знак</TableHead>}
-                                    </TableRow>
-                                  </TableHeader>
-                                  <TableBody>
-                                    {box.items.flatMap((item, idx) => {
-                                      if (item.chzCodes && item.chzCodes.length > 0) {
-                                        return item.chzCodes.map((code, cIdx) => (
-                                          <TableRow key={`${idx}-${cIdx}`}>
-                                            <TableCell className="text-xs font-mono">{item.articleSeller}</TableCell>
-                                            <TableCell className="text-xs">{item.name}</TableCell>
-                                            <TableCell className="text-xs">{item.size || "—"}</TableCell>
-                                            <TableCell className="text-xs text-right">1</TableCell>
-                                            <TableCell className="text-xs font-mono text-muted-foreground">{item.barcode}</TableCell>
-                                            {box.items.some((i) => i.chzCodes?.length) && (
-                                              <TableCell className="text-xs font-mono text-muted-foreground max-w-[220px] truncate" title={code}>{code}</TableCell>
-                                            )}
-                                          </TableRow>
-                                        ));
-                                      }
-                                      return [(
-                                        <TableRow key={idx}>
-                                          <TableCell className="text-xs font-mono">{item.articleSeller}</TableCell>
-                                          <TableCell className="text-xs">{item.name}</TableCell>
-                                          <TableCell className="text-xs">{item.size || "—"}</TableCell>
-                                          <TableCell className="text-xs text-right">{item.qty}</TableCell>
-                                          <TableCell className="text-xs font-mono text-muted-foreground">{item.barcode}</TableCell>
-                                          {box.items.some((i) => i.chzCodes?.length) && (
-                                            <TableCell className="text-xs text-muted-foreground">—</TableCell>
-                                          )}
-                                        </TableRow>
-                                      )];
-                                    })}
-                                  </TableBody>
-                                </Table>
-                              </div>
-                            </td>
-                          </tr>
-                        </CollapsibleContent>
-                      </>
-                    </Collapsible>
-                  );
-                })}
-                {filteredBoxes.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={11} className="text-center text-muted-foreground py-8">Ничего не найдено</TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        )}
-
-        {/* ===== TAB: SKU ===== */}
-        {activeTab === "sku" && (
-          <div className="rounded-lg border border-border bg-card overflow-hidden">
-            <Table>
-              <TableHeader>
-                <TableRow className="bg-muted/50">
-                  <TableHead className="text-xs font-medium">Артикул WB/Ozon</TableHead>
-                  <TableHead className="text-xs font-medium">Артикул продавца</TableHead>
-                  <TableHead className="text-xs font-medium">Бренд</TableHead>
-                  <TableHead className="text-xs font-medium">Размер</TableHead>
-                  <TableHead className="text-xs font-medium text-right">Количество</TableHead>
-                  <TableHead className="text-xs font-medium">Баркод</TableHead>
-                  <TableHead className="text-xs font-medium">Честный знак</TableHead>
-                  <TableHead className="text-xs font-medium">Тип</TableHead>
-                  <TableHead className="text-xs font-medium">Дата приёмки</TableHead>
-                  <TableHead className="text-xs font-medium">Статус</TableHead>
-                  {inventoryMode && !inventoryFinished && <TableHead className="text-xs font-medium w-16"></TableHead>}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredSKU.flatMap((item, idx) => {
-                  const rows: JSX.Element[] = [];
-                  if (item.chzCodes && item.chzCodes.length > 0) {
-                    item.chzCodes.forEach((code, cIdx) => {
-                      const key = `${item.boxId}:${item.barcode}:${code}`;
-                      const st = getSkuStatus(key);
-                      const scanned = scannedSkuIds.has(key);
-                      rows.push(
-                        <TableRow key={`${idx}-${cIdx}`}
-                          className={inventoryMode ? (scanned ? "bg-success/5" : inventoryFinished ? "bg-destructive/5" : "") : ""}>
-                          <TableCell className="text-sm font-mono">{item.article}</TableCell>
-                          <TableCell className="text-sm font-mono text-muted-foreground">{item.articleSeller}</TableCell>
-                          <TableCell className="text-sm">{item.brand}</TableCell>
-                          <TableCell className="text-sm">{item.size || "—"}</TableCell>
-                          <TableCell className="text-sm text-right font-medium">1</TableCell>
-                          <TableCell className="text-sm font-mono text-muted-foreground">{item.barcode}</TableCell>
-                          <TableCell className="text-xs font-mono text-muted-foreground max-w-[200px] truncate" title={code}>{code}</TableCell>
-                          <TableCell className="text-xs">{item.kind === "set" ? `набор (${item.setSize ?? ""} шт)` : "единица"}</TableCell>
-                          <TableCell className="text-sm text-muted-foreground">{item.dateReceived}</TableCell>
-                          <TableCell><StatusBadge status={st.type} label={st.label} /></TableCell>
-                          {inventoryMode && !inventoryFinished && (
-                            <TableCell>
-                              {!scanned && (
-                                <Button variant="ghost" size="sm" onClick={() => handleScanSku(key)} title="Отметить">
-                                  <ScanLine className="w-4 h-4" />
-                                </Button>
-                              )}
-                            </TableCell>
-                          )}
-                        </TableRow>
-                      );
-                    });
-                  } else {
-                    const key = `${item.boxId}:${item.barcode}`;
-                    const st = getSkuStatus(key);
-                    const scanned = scannedSkuIds.has(key);
-                    rows.push(
-                      <TableRow key={idx}
-                        className={inventoryMode ? (scanned ? "bg-success/5" : inventoryFinished ? "bg-destructive/5" : "") : ""}>
-                        <TableCell className="text-sm font-mono">{item.article}</TableCell>
-                        <TableCell className="text-sm font-mono text-muted-foreground">{item.articleSeller}</TableCell>
-                        <TableCell className="text-sm">{item.brand}</TableCell>
-                        <TableCell className="text-sm">{item.size || "—"}</TableCell>
-                        <TableCell className="text-sm text-right font-medium">{item.qty}</TableCell>
-                        <TableCell className="text-sm font-mono text-muted-foreground">{item.barcode}</TableCell>
-                        <TableCell className="text-xs text-muted-foreground">—</TableCell>
-                        <TableCell className="text-xs">{item.kind === "set" ? `набор (${item.setSize ?? ""} шт)` : "единица"}</TableCell>
-                        <TableCell className="text-sm text-muted-foreground">{item.dateReceived}</TableCell>
-                        <TableCell><StatusBadge status={st.type} label={st.label} /></TableCell>
-                        {inventoryMode && !inventoryFinished && (
-                          <TableCell>
-                            {!scanned && (
-                              <Button variant="ghost" size="sm" onClick={() => handleScanSku(key)} title="Отметить">
-                                <ScanLine className="w-4 h-4" />
-                              </Button>
-                            )}
-                          </TableCell>
-                        )}
-                      </TableRow>
-                    );
-                  }
-                  return rows;
-                })}
-                {filteredSKU.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={inventoryMode && !inventoryFinished ? 11 : 10} className="text-center text-muted-foreground py-8">Ничего не найдено</TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        )}
-      </div>
-
-      {/* Add item dialog */}
-      <Dialog open={addDialogOpen} onOpenChange={(open) => {
-        setAddDialogOpen(open);
-        if (!open) { setAddBarcode(""); setAddPreview(null); }
-      }}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Plus className="w-5 h-5 text-primary" />
-              Добавить товар
-            </DialogTitle>
-            <DialogDescription>
-              Отсканируйте упаковочный лист (коробка), штрих-код или Честный знак (единица).
-              Можно также ввести значение вручную.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="flex items-center gap-2">
-              <div className="relative flex-1">
-                <ScanLine className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          {/* ============ ОСТАТКИ ============ */}
+          <TabsContent value="stock" className="mt-4 space-y-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="relative w-72">
+                <Search className="absolute left-2.5 top-2.5 w-4 h-4 text-muted-foreground" />
                 <Input
-                  placeholder="Штрих-код, ЧЗ или упаковочный лист..."
-                  value={addBarcode}
-                  onChange={(e) => { setAddBarcode(e.target.value); setAddPreview(null); }}
-                  onKeyDown={(e) => e.key === "Enter" && handleAddLookup()}
-                  className="pl-9" autoFocus
+                  className="pl-8 h-9"
+                  placeholder="Поиск: артикул, ШК, GTIN, артикул WB"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
                 />
               </div>
-              <Button size="sm" onClick={handleAddLookup}>Считать</Button>
-            </div>
-            {addPreview && (
-              <div className="rounded-lg border border-primary/30 bg-primary/5 p-4 space-y-3">
-                <div className="flex items-center gap-2">
-                  {addPreview.kind === "box" ? <Box className="w-4 h-4 text-primary" /> : <Package className="w-4 h-4 text-primary" />}
-                  <span className="font-medium text-sm">{addPreview.label}</span>
-                </div>
-                <p className="text-xs text-muted-foreground">{addPreview.detail}</p>
-                <Button variant="default" size="sm" className="w-full" onClick={handleAddConfirm}>
-                  <CheckCircle2 className="w-4 h-4 mr-2" />Добавить в Сток
-                </Button>
+              <Select value={articleFilter} onValueChange={setArticleFilter}>
+                <SelectTrigger className="h-9 w-72">
+                  <SelectValue placeholder="Артикул" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Все артикулы</SelectItem>
+                  {articles.map((a) => (
+                    <SelectItem key={a} value={a}>{a}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <div className="ml-auto flex gap-4 text-xs text-muted-foreground">
+                <span>Всего: <b className="text-foreground">{totals.total}</b></span>
+                <span>В резерве: <b className="text-foreground">{totals.reserved}</b></span>
+                <span>Отгрузка: <b className="text-foreground">{totals.shipped}</b></span>
+                <span>Доступно: <b className="text-foreground">{totals.available}</b></span>
+                {totals.deficit > 0 && <span className="text-destructive">Дефицит: <b>{totals.deficit}</b></span>}
               </div>
-            )}
+            </div>
+
+            <div className="border border-border rounded-lg overflow-auto bg-card">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/50 text-xs uppercase text-muted-foreground">
+                  <tr>
+                    <th className="text-left px-3 py-2.5">Характеристика</th>
+                    <th className="text-left px-3 py-2.5">Артикул</th>
+                    <th className="text-left px-3 py-2.5">ШК</th>
+                    <th className="text-left px-3 py-2.5">GTIN</th>
+                    <th className="text-left px-3 py-2.5">Артикул WB</th>
+                    <th className="text-left px-3 py-2.5">Номенклатура</th>
+                    <th className="text-left px-3 py-2.5">Ед.</th>
+                    <th className="text-right px-3 py-2.5">Всего</th>
+                    <th className="text-right px-3 py-2.5">В резерве</th>
+                    <th className="text-right px-3 py-2.5">Отгрузка</th>
+                    <th className="text-right px-3 py-2.5">Доступно</th>
+                    <th className="text-right px-3 py-2.5">К обеспечению</th>
+                    <th className="text-right px-3 py-2.5">Дефицит</th>
+                    <th className="text-right px-3 py-2.5">Излишек</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((r) => (
+                    <tr
+                      key={r.id}
+                      className={`border-t border-border ${r.deficit > 0 ? "bg-destructive/10" : "hover:bg-muted/30"}`}
+                    >
+                      <td className="px-3 py-2">{r.size}</td>
+                      <td className="px-3 py-2 font-medium">{r.article}</td>
+                      <td className="px-3 py-2 font-mono text-xs">{r.shk}</td>
+                      <td className="px-3 py-2 font-mono text-xs text-muted-foreground">{r.gtin || "—"}</td>
+                      <td className="px-3 py-2 font-mono text-xs">{r.wbArticle || "—"}</td>
+                      <td className="px-3 py-2 max-w-[280px] truncate" title={r.name}>{r.name}</td>
+                      <td className="px-3 py-2 text-muted-foreground">{r.unit}</td>
+                      <td className="px-3 py-2 text-right">{r.total}</td>
+                      <td className="px-3 py-2 text-right">{r.reserved || "—"}</td>
+                      <td className="px-3 py-2 text-right">{r.shipped || "—"}</td>
+                      <td className={`px-3 py-2 text-right font-semibold ${r.available < 0 ? "text-destructive" : ""}`}>{r.available}</td>
+                      <td className="px-3 py-2 text-right">{r.toProvide || "—"}</td>
+                      <td className="px-3 py-2 text-right text-destructive">{r.deficit || "—"}</td>
+                      <td className="px-3 py-2 text-right">{r.surplus || "—"}</td>
+                    </tr>
+                  ))}
+                  {!rows.length && (
+                    <tr>
+                      <td colSpan={14} className="px-3 py-10 text-center text-muted-foreground">
+                        Сток пуст. Скачайте пример, заполните и загрузите файл.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <p className="text-xs text-muted-foreground">
+              Доступно = Всего − В резерве − Отгрузка · К обеспечению = В резерве + Отгрузка · Дефицит показывается при
+              отрицательном значении «Доступно» (строка подсвечена) · Излишек дублирует «Доступно». На маркетплейс
+              передаётся столбец «Доступно».
+            </p>
+          </TabsContent>
+
+          {/* ============ КОРОБА / УПЛ ============ */}
+          <TabsContent value="boxes" className="mt-4 space-y-4">
+            <div className="flex items-center gap-2">
+              <Button size="sm" variant="outline" onClick={() => { setScanOpen(true); setScanCode(""); setFoundBox(null); }}>
+                <ScanLine className="w-4 h-4 mr-2" /> Сканировать ШК УПЛ
+              </Button>
+              <span className="text-xs text-muted-foreground">Коробов всего: {boxes.length}</span>
+            </div>
+
+            <div className="border border-border rounded-lg overflow-hidden bg-card">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/50 text-xs uppercase text-muted-foreground">
+                  <tr>
+                    <th className="text-left px-3 py-2.5">УПЛ</th>
+                    <th className="text-left px-3 py-2.5">ШК УПЛ</th>
+                    <th className="text-left px-3 py-2.5">Заказ</th>
+                    <th className="text-right px-3 py-2.5">Кол-во в коробе</th>
+                    <th className="text-left px-3 py-2.5">Статус</th>
+                    <th className="px-3 py-2.5"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {boxes.map((b) => (
+                    <tr key={b.id} className="border-t border-border hover:bg-muted/30">
+                      <td className="px-3 py-2 font-medium">{b.uplNumber}</td>
+                      <td className="px-3 py-2 font-mono text-xs">{b.uplBarcode}</td>
+                      <td className="px-3 py-2">{b.orderNumber}</td>
+                      <td className="px-3 py-2 text-right">{b.items.reduce((s, i) => s + i.qty, 0)}</td>
+                      <td className="px-3 py-2">
+                        <StatusBadge status={b.closed ? "success" : "warning"} label={b.closed ? "Закрыт" : "Открыт"} />
+                      </td>
+                      <td className="px-3 py-2 text-right">
+                        <Button size="sm" variant="ghost" onClick={() => setBoxDialog(b)}>
+                          <Boxes className="w-4 h-4 mr-1" /> Наполнение
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                  {!boxes.length && (
+                    <tr>
+                      <td colSpan={6} className="px-3 py-10 text-center text-muted-foreground">
+                        Коробов пока нет — они появятся после приёмки товара.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </TabsContent>
+        </Tabs>
+      </div>
+
+      {/* Диалог сканирования УПЛ */}
+      <Dialog open={scanOpen} onOpenChange={setScanOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Сканирование ШК упаковочного листа</DialogTitle>
+            <DialogDescription>Считайте штрихкод УПЛ — покажем наполнение короба.</DialogDescription>
+          </DialogHeader>
+          <div className="flex gap-2">
+            <Input
+              autoFocus
+              placeholder="ШК УПЛ или номер УПЛ"
+              value={scanCode}
+              onChange={(e) => setScanCode(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && doScan()}
+            />
+            <Button onClick={doScan}>Найти</Button>
           </div>
+          {foundBox && (
+            <div className="mt-2">
+              <UplLabel box={foundBox} />
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Наполнение короба */}
+      <Dialog open={!!boxDialog} onOpenChange={(o) => !o && setBoxDialog(null)}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Наполнение короба {boxDialog?.uplNumber}</DialogTitle>
+            <DialogDescription>Заказ {boxDialog?.orderNumber} · ШК УПЛ {boxDialog?.uplBarcode}</DialogDescription>
+          </DialogHeader>
+          {boxDialog && (
+            <div className="space-y-3">
+              <table className="w-full text-sm border border-border rounded">
+                <thead className="bg-muted/50 text-xs uppercase text-muted-foreground">
+                  <tr>
+                    <th className="text-left px-3 py-2">Артикул</th>
+                    <th className="text-left px-3 py-2">Баркод</th>
+                    <th className="text-left px-3 py-2">Размер</th>
+                    <th className="text-right px-3 py-2">Кол-во</th>
+                    <th className="text-left px-3 py-2">КИЗы</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {boxDialog.items.map((i) => (
+                    <tr key={i.shk} className="border-t border-border align-top">
+                      <td className="px-3 py-2">{i.article}</td>
+                      <td className="px-3 py-2 font-mono text-xs">{i.shk}</td>
+                      <td className="px-3 py-2">{i.size}</td>
+                      <td className="px-3 py-2 text-right">{i.qty}</td>
+                      <td className="px-3 py-2 text-[11px] font-mono text-muted-foreground">
+                        {i.kizes.length ? i.kizes.join(", ") : "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <UplLabel box={boxDialog} />
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>
