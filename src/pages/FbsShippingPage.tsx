@@ -528,10 +528,17 @@ const FbsShippingPage = () => {
                     onChange={(e) => setKizValue(e.target.value)}
                     onKeyDown={(e) => e.key === "Enter" && handleKiz()}
                   />
-                  <Button onClick={handleKiz}><ScanLine className="w-4 h-4 mr-2" /> Добавить</Button>
+                  <Button onClick={handleKiz} disabled={emulating}><ScanLine className="w-4 h-4 mr-2" /> Добавить</Button>
+                  <Button variant="outline" onClick={() => emulateScan()} disabled={emulating}>
+                    <ScanLine className={`w-4 h-4 mr-2 ${emulating ? "animate-pulse" : ""}`} /> Эмулировать скан
+                  </Button>
+                  <Button variant="secondary" onClick={emulateScanAll} disabled={emulating}>
+                    Скан всех
+                  </Button>
                 </div>
                 <p className="text-[11px] text-muted-foreground">
                   По КИЗу определяем товар и привязываем к заданию по совпадению ШК / артикула / размера.
+                  Кнопки эмуляции генерируют КИЗ в формате GS1 (01…21…93…) и «сканируют» его вместо физического сканера.
                 </p>
               </div>
 
@@ -557,6 +564,9 @@ const FbsShippingPage = () => {
                         <StatusBadge status={o.stickerPrinted ? "success" : "default"} label={o.stickerPrinted ? "Напечатан" : "Нет"} />
                       </td>
                       <td className="px-3 py-2 text-right">
+                        <Button size="sm" variant="ghost" disabled={!!o.kiz || emulating} onClick={() => emulateScan(o)}>
+                          <ScanLine className="w-4 h-4 mr-1" /> Скан КИЗ
+                        </Button>
                         <Button size="sm" variant="ghost" disabled={!o.kiz} onClick={() => { printSticker(o.id); toast({ title: "Стикер WB отправлен на печать", description: `${o.article} · ${o.size}` }); }}>
                           <Printer className="w-4 h-4 mr-1" /> Печать стикера
                         </Button>
