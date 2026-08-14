@@ -47,6 +47,7 @@ const FbsShippingPage = () => {
   /* --- В сборке --- */
   const [openSupply, setOpenSupply] = useState<Supply | null>(null);
   const [kizValue, setKizValue] = useState("");
+  const [emulating, setEmulating] = useState(false);
 
   /* --- Завершённые --- */
   const [doneSelected, setDoneSelected] = useState<number[]>([]);
