@@ -120,6 +120,50 @@ const FbsShippingPage = () => {
     if (res.ok) setKizValue("");
   };
 
+  /* --- Эмуляция сканера КИЗ --- */
+  const rnd = (n: number) => Array.from({ length: n }, () => Math.floor(Math.random() * 10)).join("");
+  const genKiz = (o: FbsOrder) => `01046${o.shk}21${rnd(6)}\u001d93${rnd(4)}`;
+
+  const emulateScan = async (order?: FbsOrder) => {
+    if (!liveSupply || emulating) return;
+    const target = order ?? supplyOrders.find((o) => !o.kiz);
+    if (!target) {
+      toast({ title: "Все КИЗы уже привязаны", description: "Нет заданий без КИЗа." });
+      return;
+    }
+    const code = genKiz(target);
+    setEmulating(true);
+    // печатаем код «по символам», как это делает сканер
+    for (let i = 1; i <= code.length; i += 4) {
+      setKizValue(code.slice(0, i));
+      await new Promise((r) => setTimeout(r, 12));
+    }
+    setKizValue(code);
+    await new Promise((r) => setTimeout(r, 150));
+    const res = attachKiz(liveSupply.id, code);
+    toast({
+      title: res.ok ? "КИЗ отсканирован (эмуляция)" : "Не найдено",
+      description: res.message,
+      variant: res.ok ? undefined : "destructive",
+    });
+    if (res.ok) setKizValue("");
+    setEmulating(false);
+  };
+
+  const emulateScanAll = async () => {
+    if (!liveSupply || emulating) return;
+    const pending = supplyOrders.filter((o) => !o.kiz);
+    if (!pending.length) {
+      toast({ title: "Все КИЗы уже привязаны" });
+      return;
+    }
+    for (const o of pending) {
+      await emulateScan(o);
+      await new Promise((r) => setTimeout(r, 120));
+    }
+    toast({ title: "Эмуляция завершена", description: `Отсканировано КИЗов: ${pending.length}` });
+  };
+
   const generateUpd = () => {
     const rows = fbsOrders.filter((o) => doneSelected.includes(o.id));
     if (!rows.length) return;
