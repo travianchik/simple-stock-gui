@@ -7,6 +7,7 @@ import { RoleProvider } from "./contexts/RoleContext";
 import { StockProvider } from "./contexts/StockContext";
 import { NotificationsProvider } from "./contexts/NotificationsContext";
 import { WarehouseProvider } from "./contexts/WarehouseContext";
+import { OrbitaProvider } from "./contexts/OrbitaContext";
 import AppLayout from "./components/AppLayout";
 import StockPage from "./pages/StockPage";
 import ReceivingPage from "./pages/ReceivingPage";
@@ -28,6 +29,7 @@ const App = () => (
         <RoleProvider>
           <StockProvider>
           <WarehouseProvider>
+          <OrbitaProvider>
           <NotificationsProvider>
           <Routes>
             <Route element={<AppLayout />}>
@@ -42,6 +44,7 @@ const App = () => (
             <Route path="*" element={<NotFound />} />
           </Routes>
           </NotificationsProvider>
+          </OrbitaProvider>
           </WarehouseProvider>
           </StockProvider>
         </RoleProvider>

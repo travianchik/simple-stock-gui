@@ -1,361 +1,530 @@
-import { useState } from "react";
-import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from "@/components/ui/table";
+import { useMemo, useState } from "react";
+import * as XLSX from "xlsx";
+import { RefreshCw, Download, PackagePlus, ScanLine, Printer, QrCode, Truck, FileText, Warehouse } from "lucide-react";
+import PageHeader from "@/components/PageHeader";
+import StatusBadge from "@/components/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
-} from "@/components/ui/dialog";
-import PageHeader from "@/components/PageHeader";
-import StatusBadge from "@/components/StatusBadge";
-import { toast } from "@/hooks/use-toast";
-import {
-  Download, ScanLine, Printer, QrCode, Truck, Package, PackageCheck,
-} from "lucide-react";
-import { useRoles } from "@/contexts/RoleContext";
-import { useWarehouse, ShipTask, ShipTaskStatus } from "@/contexts/WarehouseContext";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useToast } from "@/hooks/use-toast";
+import { useOrbita, wbWarehouses, type FbsOrder, type Supply } from "@/contexts/OrbitaContext";
 
-const statusMeta: Record<ShipTaskStatus, { label: string; type: "default" | "primary" | "warning" | "success" }> = {
-  new: { label: "Новое задание", type: "default" },
-  picking: { label: "Сборка", type: "warning" },
-  picked: { label: "Собрано", type: "primary" },
-  packing: { label: "Упаковка", type: "warning" },
-  packed: { label: "Упаковано", type: "primary" },
-  shipped: { label: "Передано водителю", type: "success" },
+const toDate = (ru: string) => {
+  const [d, t] = ru.split(" ");
+  const [dd, mm, yy] = (d ?? "").split(".");
+  return new Date(`${yy}-${mm}-${dd}T${t ?? "00:00"}`);
 };
 
-const cities = ["Москва", "Санкт-Петербург", "Казань", "Екатеринбург", "Новосибирск"];
-
 const FbsShippingPage = () => {
-  const { currentUser } = useRoles();
-  const { tasks, addTasks, updateTask, updateTaskItem } = useWarehouse();
+  const {
+    fbsOrders,
+    supplies,
+    syncFbsNew,
+    createSupply,
+    addTrbx,
+    attachKiz,
+    printSticker,
+    printSupplyQr,
+    deliverSupply,
+    refreshSaleStatuses,
+    markUpdGenerated,
+    ordersOfSupply,
+  } = useOrbita();
+  const { toast } = useToast();
 
-  const [scheme, setScheme] = useState<"FBS" | "FBO">("FBS");
-  const visible = tasks.filter((t) => t.scheme === scheme);
+  /* --- Новое --- */
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [warehouseFilter, setWarehouseFilter] = useState("all");
+  const [selected, setSelected] = useState<number[]>([]);
+  const [supplyWarehouse, setSupplyWarehouse] = useState<string>(wbWarehouses[0].name);
+  const [createOpen, setCreateOpen] = useState(false);
 
-  /* --- автоматическая выгрузка заказов по API (как надо реализовать) --- */
-  const [apiOpen, setApiOpen] = useState(false);
-  const [apiDate, setApiDate] = useState(new Date().toISOString().slice(0, 10));
-  const [apiTime, setApiTime] = useState("09:00");
-  const [apiUnits, setApiUnits] = useState("250");
+  /* --- В сборке --- */
+  const [openSupply, setOpenSupply] = useState<Supply | null>(null);
+  const [kizValue, setKizValue] = useState("");
 
-  const downloadFromApi = () => {
-    const units = Number(apiUnits) || 0;
-    const perCity = Math.max(1, Math.floor(units / cities.length));
-    const created: ShipTask[] = cities.map((city, idx) => ({
-      id: Date.now() + idx,
-      scheme,
-      city,
-      qrCode: `QR-WB-${city.slice(0, 3).toUpperCase()}-${String(Date.now()).slice(-4)}${idx}`,
-      marketplace: "Wildberries",
-      managerId: null,
-      packerId: null,
-      unitsPerBox: 5,
-      boxesCount: 0,
-      qrCopies: 0,
-      items: [
-        { article: "WB-12345", name: "Футболка белая S", barcode: "4607012345671-01", qty: perCity, cell: "1.2.1.1", picked: 0, labeled: 0 },
-      ],
-      status: "new",
-      createdAt: new Date().toLocaleDateString("ru-RU"),
-      source: "api",
+  /* --- Завершённые --- */
+  const [doneSelected, setDoneSelected] = useState<number[]>([]);
+  const [doneStatusFilter, setDoneStatusFilter] = useState<"all" | "bought" | "canceled">("all");
+
+  const newOrders = useMemo(() => {
+    return fbsOrders
+      .filter((o) => o.status === "new")
+      .filter((o) => (warehouseFilter === "all" ? true : o.warehouse === warehouseFilter))
+      .filter((o) => {
+        const d = toDate(o.createdAt);
+        if (dateFrom && d < new Date(dateFrom)) return false;
+        if (dateTo && d > new Date(`${dateTo}T23:59`)) return false;
+        return true;
+      });
+  }, [fbsOrders, warehouseFilter, dateFrom, dateTo]);
+
+  const assemblingSupplies = supplies.filter((s) => s.status === "assembling");
+  const deliveringSupplies = supplies.filter((s) => s.status === "delivering");
+  const doneOrders = fbsOrders
+    .filter((o) => o.status === "delivering" || o.status === "done")
+    .filter((o) => {
+      if (doneStatusFilter === "all") return true;
+      if (doneStatusFilter === "canceled") return o.saleStatus === "canceled";
+      return o.saleStatus !== "canceled";
+    });
+
+  const liveSupply = openSupply ? supplies.find((s) => s.id === openSupply.id) ?? null : null;
+  const supplyOrders = liveSupply ? ordersOfSupply(liveSupply.id).filter((o) => o.status === "assembling") : [];
+
+  const exportNew = () => {
+    const rows = newOrders.map((o) => ({
+      "Сборочное задание": o.orderNo,
+      Дата: o.createdAt,
+      Артикул: o.article,
+      Размер: o.size,
+      Наименование: o.name,
+      Баркод: o.shk,
+      "Артикул WB": o.wbArticle,
+      Цена: o.price,
+      Склад: o.warehouse,
     }));
-    addTasks(created);
-    toast({
-      title: `Данные скачаны по API (${apiDate} ${apiTime})`,
-      description: `${units} ед. сопоставлены с ${cities.length} городами, задания для менеджеров по отгрузке сформированы сразу`,
-    });
-    setApiOpen(false);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), "Новые заказы");
+    XLSX.writeFile(wb, "FBS_новые.xlsx");
   };
 
-  /* --- ТСД: сборка заказа менеджером по отгрузке --- */
-  const [pickTask, setPickTask] = useState<ShipTask | null>(null);
-  const [qrScan, setQrScan] = useState("");
-  const [openedBox, setOpenedBox] = useState<string | null>(null);
-  const [itemScan, setItemScan] = useState("");
-
-  const current = pickTask ? tasks.find((t) => t.id === pickTask.id) || pickTask : null;
-
-  const openTaskByQr = () => {
-    if (!current) return;
-    if (qrScan.trim() !== current.qrCode) {
-      toast({ title: "QR заказа не совпадает", variant: "destructive" });
+  const handleCreateSupply = () => {
+    const chosen = fbsOrders.filter((o) => selected.includes(o.id));
+    const warehouses = new Set(chosen.map((o) => o.warehouse));
+    if (warehouses.size > 1) {
+      toast({
+        title: "Недопустимо несколько складов",
+        description: "Поставку можно создать только по одному складу.",
+        variant: "destructive",
+      });
       return;
     }
-    updateTask(current.id, { status: "picking", managerId: currentUser.id });
-    toast({ title: "Заказ открыт на ТСД", description: "Идите собирать заказ по листу (стеллаж / ячейка)" });
-    setQrScan("");
+    const wh = chosen[0]?.warehouse ?? supplyWarehouse;
+    const supply = createSupply(selected, wh);
+    setSelected([]);
+    setCreateOpen(false);
+    if (supply) toast({ title: `Поставка создана: ${supply.supplyNo}`, description: `Склад: ${wh}` });
   };
 
-  const openBox = (cell: string) => {
-    setOpenedBox(cell);
-    toast({ title: `Откройте коробку в ячейке ${cell}` });
+  const handleKiz = () => {
+    if (!liveSupply) return;
+    const res = attachKiz(liveSupply.id, kizValue);
+    toast({ title: res.ok ? "КИЗ добавлен в поставку" : "Не найдено", description: res.message, variant: res.ok ? undefined : "destructive" });
+    if (res.ok) setKizValue("");
   };
 
-  const pickItem = () => {
-    if (!current || !openedBox) return;
-    const item = current.items.find((i) => i.cell === openedBox && (i.barcode === itemScan.trim() || i.article === itemScan.trim()));
-    if (!item) {
-      toast({ title: "Баркод / КИЗ не соответствует заданию", variant: "destructive" });
-      return;
-    }
-    if (item.picked >= item.qty) {
-      toast({ title: "По этой позиции задание уже выполнено" });
-      return;
-    }
-    updateTaskItem(current.id, item.article, { picked: item.picked + 1 });
-    setItemScan("");
+  const generateUpd = () => {
+    const rows = fbsOrders.filter((o) => doneSelected.includes(o.id));
+    if (!rows.length) return;
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<УПД Дата="${new Date().toLocaleDateString("ru-RU")}">\n${rows
+      .map(
+        (o) =>
+          `  <Товар Артикул="${o.article}" Размер="${o.size}" ШК="${o.shk}" АртикулWB="${o.wbArticle}" Цена="${o.price}" Задание="${o.orderNo}" КИЗ="${o.kiz ?? ""}" />`
+      )
+      .join("\n")}\n</УПД>`;
+    const blob = new Blob([xml], { type: "application/xml" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `УПД_${Date.now()}.xml`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    markUpdGenerated(doneSelected);
+    setDoneSelected([]);
+    toast({ title: "УПД сформирован", description: "xml-файл скачан, товар отмечен ярлыком «УПД»." });
   };
 
-  const closeBox = () => {
-    toast({ title: `Короб в ячейке ${openedBox} закрыт` });
-    setOpenedBox(null);
-  };
-
-  const toTrolley = () => {
-    if (!current) return;
-    updateTask(current.id, { status: "picked" });
-    toast({ title: "Товар сложен на тележку", description: "Передан упаковщицам по отгрузке" });
-    setPickTask(null);
-  };
-
-  /* --- упаковка --- */
-  const [packTask, setPackTask] = useState<ShipTask | null>(null);
-  const [packScan, setPackScan] = useState("");
-  const [boxesCount, setBoxesCount] = useState("");
-  const packCurrent = packTask ? tasks.find((t) => t.id === packTask.id) || packTask : null;
-
-  const scanForLabel = () => {
-    if (!packCurrent) return;
-    const item = packCurrent.items.find((i) => i.barcode === packScan.trim() || i.article === packScan.trim());
-    if (!item) {
-      toast({ title: "Баркод / КИЗ не найден в заказе", variant: "destructive" });
-      return;
-    }
-    if (item.labeled >= item.qty) {
-      toast({ title: "Все этикетки по позиции наклеены" });
-      return;
-    }
-    updateTaskItem(packCurrent.id, item.article, { labeled: item.labeled + 1 });
-    updateTask(packCurrent.id, { status: "packing", packerId: currentUser.id });
-    toast({ title: "Этикетка WB распечатана", description: `${item.name} — наклейте и сложите товар в короб` });
-    setPackScan("");
-  };
-
-  const finishPacking = () => {
-    if (!packCurrent) return;
-    const total = packCurrent.items.reduce((s, i) => s + i.qty, 0);
-    const count = Number(boxesCount);
-    if (!count) {
-      toast({ title: "Укажите количество коробов", variant: "destructive" });
-      return;
-    }
-    updateTask(packCurrent.id, { status: "packed", boxesCount: count, qrCopies: count });
-    toast({
-      title: `WB выдал QR по городу ${packCurrent.city}`,
-      description: `${total} ед. по ${packCurrent.unitsPerBox} в коробе = ${count} коробов → ${count} копий QR напечатано`,
-    });
-    setBoxesCount("");
-    setPackTask(null);
-  };
-
-  const handOverToDriver = (t: ShipTask) => {
-    const driver = "Водитель Смирнов И.";
-    updateTask(t.id, { status: "shipped", driver });
-    toast({ title: "Короба переданы водителю", description: `${driver} сдаёт короба в сортировочный центр` });
-  };
-
-  const printSheets = () => {
-    const list = visible.filter((t) => t.status === "new" || t.status === "picking");
-    toast({
-      title: `Печать заданий: ${list.length} лист(ов)`,
-      description: list.map((t) => `${t.city} — ${t.items.reduce((s, i) => s + i.qty, 0)} ед.`).join("; "),
-    });
-  };
+  const toggle = (arr: number[], set: (v: number[]) => void, id: number) =>
+    set(arr.includes(id) ? arr.filter((x) => x !== id) : [...arr, id]);
 
   return (
-    <div className="space-y-4">
+    <div className="flex flex-col h-full">
       <PageHeader
-        title="Отгрузка FBS / FBO"
-        description="Задания по городам, сборка на ТСД по QR, упаковка и передача коробов водителю"
+        title="Отгрузка FBS"
+        description="Новое → В сборке → В доставке → Завершённые. Обмен с WB по API."
         actions={
-          <>
-            <div className="flex rounded-md border border-border overflow-hidden">
-              {(["FBS", "FBO"] as const).map((s) => (
-                <button key={s} onClick={() => setScheme(s)}
-                  className={`px-3 py-1.5 text-xs ${scheme === s ? "bg-primary text-primary-foreground" : "bg-card text-muted-foreground"}`}>
-                  {s}
-                </button>
-              ))}
-            </div>
-            <Button size="sm" variant="outline" onClick={printSheets}><Printer className="w-4 h-4 mr-1" />Печать заданий</Button>
-            <Button size="sm" onClick={() => setApiOpen(true)}><Download className="w-4 h-4 mr-1" />Скачать заказы по API</Button>
-          </>
+          <Button size="sm" onClick={() => { const n = syncFbsNew(); toast({ title: "Список обновлён по API WB", description: `Новых сборочных заданий: ${n}` }); }}>
+            <RefreshCw className="w-4 h-4 mr-2" /> Получить новые задания
+          </Button>
         }
       />
 
-      <div className="rounded-lg border border-border bg-card overflow-hidden">
-        <Table>
-          <TableHeader>
-            <TableRow className="bg-muted/50">
-              <TableHead className="text-xs">QR заказа</TableHead>
-              <TableHead className="text-xs">Город</TableHead>
-              <TableHead className="text-xs">Маркетплейс</TableHead>
-              <TableHead className="text-xs text-right">Ед. в заказе</TableHead>
-              <TableHead className="text-xs text-right">Собрано</TableHead>
-              <TableHead className="text-xs text-right">Ед./короб</TableHead>
-              <TableHead className="text-xs text-right">Коробов / QR</TableHead>
-              <TableHead className="text-xs">Источник</TableHead>
-              <TableHead className="text-xs">Статус</TableHead>
-              <TableHead className="text-xs w-52"></TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {visible.map((t) => {
-              const total = t.items.reduce((s, i) => s + i.qty, 0);
-              const picked = t.items.reduce((s, i) => s + i.picked, 0);
-              return (
-                <TableRow key={t.id}>
-                  <TableCell className="font-mono text-xs text-primary">{t.qrCode}</TableCell>
-                  <TableCell className="text-sm">{t.city}</TableCell>
-                  <TableCell className="text-sm">{t.marketplace}</TableCell>
-                  <TableCell className="text-sm text-right">{total}</TableCell>
-                  <TableCell className="text-sm text-right font-medium">{picked}</TableCell>
-                  <TableCell className="text-sm text-right">{t.unitsPerBox}</TableCell>
-                  <TableCell className="text-sm text-right">{t.boxesCount || "—"} / {t.qrCopies || "—"}</TableCell>
-                  <TableCell className="text-xs text-muted-foreground">{t.source === "api" ? "API" : "Вручную"}</TableCell>
-                  <TableCell><StatusBadge status={statusMeta[t.status].type} label={statusMeta[t.status].label} /></TableCell>
-                  <TableCell className="text-right space-x-1">
-                    {["new", "picking"].includes(t.status) && (
-                      <Button size="sm" variant="outline" onClick={() => { setPickTask(t); setQrScan(""); setOpenedBox(null); }}>
-                        <ScanLine className="w-3.5 h-3.5 mr-1" />ТСД
-                      </Button>
-                    )}
-                    {["picked", "packing"].includes(t.status) && (
-                      <Button size="sm" variant="outline" onClick={() => { setPackTask(t); setBoxesCount(""); }}>
-                        <Package className="w-3.5 h-3.5 mr-1" />Упаковка
-                      </Button>
-                    )}
-                    {t.status === "packed" && (
-                      <Button size="sm" onClick={() => handOverToDriver(t)}>
-                        <Truck className="w-3.5 h-3.5 mr-1" />Водителю
-                      </Button>
-                    )}
-                    {t.status === "shipped" && <span className="text-xs text-muted-foreground">{t.driver}</span>}
-                  </TableCell>
-                </TableRow>
-              );
-            })}
-          </TableBody>
-        </Table>
+      <div className="flex-1 overflow-auto p-6">
+        <Tabs defaultValue="new">
+          <TabsList>
+            <TabsTrigger value="new">Новое ({fbsOrders.filter((o) => o.status === "new").length})</TabsTrigger>
+            <TabsTrigger value="assembling">В сборке ({assemblingSupplies.length})</TabsTrigger>
+            <TabsTrigger value="delivering">В доставке ({deliveringSupplies.length})</TabsTrigger>
+            <TabsTrigger value="done">Завершённые ({doneOrders.length})</TabsTrigger>
+            <TabsTrigger value="warehouses">Склады WB</TabsTrigger>
+          </TabsList>
+
+          {/* ================= НОВОЕ ================= */}
+          <TabsContent value="new" className="mt-4 space-y-4">
+            <div className="flex flex-wrap items-end gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs">Дата с</Label>
+                <Input type="date" className="h-9 w-40" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Дата по</Label>
+                <Input type="date" className="h-9 w-40" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Склад</Label>
+                <Select value={warehouseFilter} onValueChange={setWarehouseFilter}>
+                  <SelectTrigger className="h-9 w-72"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Все склады</SelectItem>
+                    {wbWarehouses.map((w) => (
+                      <SelectItem key={w.id} value={w.name}>{w.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button size="sm" variant="outline" onClick={exportNew}>
+                <Download className="w-4 h-4 mr-2" /> Выгрузить
+              </Button>
+              <Button
+                size="sm"
+                disabled={!selected.length}
+                onClick={() => {
+                  const chosen = fbsOrders.filter((o) => selected.includes(o.id));
+                  setSupplyWarehouse(chosen[0]?.warehouse ?? wbWarehouses[0].name);
+                  setCreateOpen(true);
+                }}
+              >
+                <PackagePlus className="w-4 h-4 mr-2" /> Создать поставку ({selected.length})
+              </Button>
+            </div>
+
+            <div className="border border-border rounded-lg overflow-hidden bg-card">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/50 text-xs uppercase text-muted-foreground">
+                  <tr>
+                    <th className="px-3 py-2.5">
+                      <Checkbox
+                        checked={!!newOrders.length && selected.length === newOrders.length}
+                        onCheckedChange={(c) => setSelected(c ? newOrders.map((o) => o.id) : [])}
+                      />
+                    </th>
+                    <th className="text-left px-3 py-2.5">Задание</th>
+                    <th className="text-left px-3 py-2.5">Поступил</th>
+                    <th className="text-left px-3 py-2.5">Товар</th>
+                    <th className="text-left px-3 py-2.5">Артикул / размер</th>
+                    <th className="text-left px-3 py-2.5">Баркод</th>
+                    <th className="text-right px-3 py-2.5">Цена</th>
+                    <th className="text-left px-3 py-2.5">Склад</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {newOrders.map((o) => (
+                    <tr key={o.id} className="border-t border-border hover:bg-muted/30">
+                      <td className="px-3 py-2 text-center">
+                        <Checkbox checked={selected.includes(o.id)} onCheckedChange={() => toggle(selected, setSelected, o.id)} />
+                      </td>
+                      <td className="px-3 py-2 font-mono text-xs">{o.orderNo}</td>
+                      <td className="px-3 py-2 text-xs">{o.createdAt}</td>
+                      <td className="px-3 py-2 max-w-[280px] truncate" title={o.name}>{o.name}</td>
+                      <td className="px-3 py-2 text-xs">{o.article} · {o.size}</td>
+                      <td className="px-3 py-2 font-mono text-xs">{o.shk}</td>
+                      <td className="px-3 py-2 text-right">{o.price} ₽</td>
+                      <td className="px-3 py-2 text-xs">{o.warehouse}</td>
+                    </tr>
+                  ))}
+                  {!newOrders.length && (
+                    <tr><td colSpan={8} className="px-3 py-10 text-center text-muted-foreground">Новых сборочных заданий нет</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Товар из раздела «Новое» отображается в Стоке в столбце «В резерве».
+            </p>
+          </TabsContent>
+
+          {/* ================= В СБОРКЕ ================= */}
+          <TabsContent value="assembling" className="mt-4 space-y-4">
+            <div className="border border-border rounded-lg overflow-hidden bg-card">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/50 text-xs uppercase text-muted-foreground">
+                  <tr>
+                    <th className="text-left px-3 py-2.5">Поставка</th>
+                    <th className="text-left px-3 py-2.5">QR-код</th>
+                    <th className="text-left px-3 py-2.5">Создана</th>
+                    <th className="text-right px-3 py-2.5">Заданий</th>
+                    <th className="text-right px-3 py-2.5">Грузомест</th>
+                    <th className="text-left px-3 py-2.5">Склад</th>
+                    <th className="px-3 py-2.5"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {assemblingSupplies.map((s) => (
+                    <tr key={s.id} className="border-t border-border hover:bg-muted/30">
+                      <td className="px-3 py-2 font-medium">{s.supplyNo}</td>
+                      <td className="px-3 py-2 font-mono text-xs">{s.qrCode}</td>
+                      <td className="px-3 py-2 text-xs">{s.createdAt}</td>
+                      <td className="px-3 py-2 text-right">{ordersOfSupply(s.id).filter((o) => o.status === "assembling").length}</td>
+                      <td className="px-3 py-2 text-right">{s.trbx.length}</td>
+                      <td className="px-3 py-2 text-xs">{s.warehouse}</td>
+                      <td className="px-3 py-2 text-right">
+                        <Button size="sm" variant="outline" onClick={() => { setOpenSupply(s); setKizValue(""); }}>Открыть поставку</Button>
+                      </td>
+                    </tr>
+                  ))}
+                  {!assemblingSupplies.length && (
+                    <tr><td colSpan={7} className="px-3 py-10 text-center text-muted-foreground">Поставок в сборке нет</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Товар в сборке отображается в Стоке в столбце «Отгрузка».
+            </p>
+          </TabsContent>
+
+          {/* ================= В ДОСТАВКЕ ================= */}
+          <TabsContent value="delivering" className="mt-4">
+            <div className="border border-border rounded-lg overflow-hidden bg-card">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/50 text-xs uppercase text-muted-foreground">
+                  <tr>
+                    <th className="text-left px-3 py-2.5">Поставка</th>
+                    <th className="text-left px-3 py-2.5">QR-код поставки</th>
+                    <th className="text-left px-3 py-2.5">Статус</th>
+                    <th className="text-left px-3 py-2.5">Время сканирования QR</th>
+                    <th className="text-right px-3 py-2.5">Заказы / грузоместа</th>
+                    <th className="text-left px-3 py-2.5">Склад</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {deliveringSupplies.map((s) => (
+                    <tr key={s.id} className="border-t border-border hover:bg-muted/30">
+                      <td className="px-3 py-2 font-medium">{s.name} · {s.supplyNo}</td>
+                      <td className="px-3 py-2 font-mono text-xs">{s.qrCode}</td>
+                      <td className="px-3 py-2"><StatusBadge status="primary" label="Поставка в обработке" /></td>
+                      <td className="px-3 py-2 text-xs">{s.createdAt}</td>
+                      <td className="px-3 py-2 text-right">{ordersOfSupply(s.id).length} / {s.trbx.length}</td>
+                      <td className="px-3 py-2 text-xs">{s.warehouse}</td>
+                    </tr>
+                  ))}
+                  {!deliveringSupplies.length && (
+                    <tr><td colSpan={6} className="px-3 py-10 text-center text-muted-foreground">Поставок в доставке нет</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+            <p className="text-xs text-muted-foreground mt-3">
+              При передаче в доставку количество товара списывается из столбца «Всего» в Стоке.
+            </p>
+          </TabsContent>
+
+          {/* ================= ЗАВЕРШЁННЫЕ ================= */}
+          <TabsContent value="done" className="mt-4 space-y-4">
+            <div className="flex items-center gap-3">
+              <Select value={doneStatusFilter} onValueChange={(v) => setDoneStatusFilter(v as typeof doneStatusFilter)}>
+                <SelectTrigger className="h-9 w-56"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Все статусы</SelectItem>
+                  <SelectItem value="bought">Товар выкуплен</SelectItem>
+                  <SelectItem value="canceled">Покупатель отказался</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button size="sm" disabled={!doneSelected.length} onClick={generateUpd}>
+                <FileText className="w-4 h-4 mr-2" /> Сформировать УПД ({doneSelected.length})
+              </Button>
+            </div>
+
+            <div className="border border-border rounded-lg overflow-hidden bg-card">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/50 text-xs uppercase text-muted-foreground">
+                  <tr>
+                    <th className="px-3 py-2.5">
+                      <Checkbox
+                        checked={!!doneOrders.length && doneSelected.length === doneOrders.length}
+                        onCheckedChange={(c) => setDoneSelected(c ? doneOrders.map((o) => o.id) : [])}
+                      />
+                    </th>
+                    <th className="text-left px-3 py-2.5">Задание</th>
+                    <th className="text-left px-3 py-2.5">Товар</th>
+                    <th className="text-right px-3 py-2.5">Цена</th>
+                    <th className="text-left px-3 py-2.5">Склад</th>
+                    <th className="text-left px-3 py-2.5">Статус</th>
+                    <th className="text-left px-3 py-2.5">КИЗ</th>
+                    <th className="text-left px-3 py-2.5">УПД</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {doneOrders.map((o) => (
+                    <tr key={o.id} className="border-t border-border hover:bg-muted/30">
+                      <td className="px-3 py-2 text-center">
+                        <Checkbox checked={doneSelected.includes(o.id)} onCheckedChange={() => toggle(doneSelected, setDoneSelected, o.id)} />
+                      </td>
+                      <td className="px-3 py-2 font-mono text-xs">{o.orderNo}</td>
+                      <td className="px-3 py-2 text-xs">{o.name} · {o.article} · {o.size}</td>
+                      <td className="px-3 py-2 text-right">{o.price} ₽</td>
+                      <td className="px-3 py-2 text-xs">{o.warehouse}</td>
+                      <td className="px-3 py-2">
+                        <StatusBadge
+                          status={o.saleStatus === "canceled" ? "error" : "success"}
+                          label={o.saleStatus === "canceled" ? "Покупатель отказался" : "Товар выкуплен"}
+                        />
+                      </td>
+                      <td className="px-3 py-2 font-mono text-[10px] text-muted-foreground">{o.kiz ?? "—"}</td>
+                      <td className="px-3 py-2">{o.updGenerated ? <StatusBadge status="primary" label="УПД" /> : "—"}</td>
+                    </tr>
+                  ))}
+                  {!doneOrders.length && (
+                    <tr><td colSpan={8} className="px-3 py-10 text-center text-muted-foreground">Завершённых заданий нет</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </TabsContent>
+
+          {/* ================= СКЛАДЫ WB ================= */}
+          <TabsContent value="warehouses" className="mt-4">
+            <div className="border border-border rounded-lg overflow-hidden bg-card">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/50 text-xs uppercase text-muted-foreground">
+                  <tr>
+                    <th className="text-left px-3 py-2.5">Склад продавца</th>
+                    <th className="text-left px-3 py-2.5">Адрес</th>
+                    <th className="text-left px-3 py-2.5">Тип</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {wbWarehouses.map((w) => (
+                    <tr key={w.id} className="border-t border-border">
+                      <td className="px-3 py-2 font-medium flex items-center gap-2">
+                        <Warehouse className="w-4 h-4 text-muted-foreground" /> {w.name}
+                      </td>
+                      <td className="px-3 py-2 text-xs">{w.address}</td>
+                      <td className="px-3 py-2 text-xs text-muted-foreground">{w.type}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </TabsContent>
+        </Tabs>
       </div>
 
-      {/* API */}
-      <Dialog open={apiOpen} onOpenChange={setApiOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>Автоматическое скачивание заказов по API</DialogTitle></DialogHeader>
-          <div className="space-y-3">
-            <div className="grid grid-cols-2 gap-2">
-              <div><Label className="text-xs">Дата</Label><Input type="date" value={apiDate} onChange={(e) => setApiDate(e.target.value)} /></div>
-              <div><Label className="text-xs">Время</Label><Input type="time" value={apiTime} onChange={(e) => setApiTime(e.target.value)} /></div>
-            </div>
-            <div><Label className="text-xs">Кол-во заказов за 24 часа, ед.</Label><Input type="number" value={apiUnits} onChange={(e) => setApiUnits(e.target.value)} /></div>
-            <p className="text-xs text-muted-foreground">
-              Товар сопоставляется по городам, QR маркетплейса сопоставляется с товаром, задание для менеджеров по отгрузке формируется сразу.
-            </p>
+      {/* Создание поставки */}
+      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Создать поставку</DialogTitle>
+            <DialogDescription>
+              Поставка создаётся только по одному складу. Заданий выбрано: {selected.length}.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label>Склад поставки</Label>
+            <Select value={supplyWarehouse} onValueChange={setSupplyWarehouse}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {wbWarehouses.map((w) => (
+                  <SelectItem key={w.id} value={w.name}>{w.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
-          <DialogFooter><Button onClick={downloadFromApi}>Скачать и сформировать задания</Button></DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* ТСД */}
-      <Dialog open={!!pickTask} onOpenChange={(v) => !v && setPickTask(null)}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader><DialogTitle>ТСД · задание {current?.city}</DialogTitle></DialogHeader>
-          {current && (
-            <div className="space-y-3">
-              {current.status === "new" ? (
-                <div className="space-y-2">
-                  <Label className="text-xs">Пикните QR заказа на листе задания ({current.qrCode})</Label>
-                  <div className="flex gap-2">
-                    <Input autoFocus value={qrScan} onChange={(e) => setQrScan(e.target.value)} placeholder="QR заказа"
-                      onKeyDown={(e) => e.key === "Enter" && openTaskByQr()} />
-                    <Button onClick={openTaskByQr}><QrCode className="w-4 h-4" /></Button>
-                  </div>
-                </div>
-              ) : (
-                <>
-                  <div className="space-y-1">
-                    {current.items.map((i) => (
-                      <div key={i.article} className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-sm">
-                        <div>
-                          <div>{i.name}</div>
-                          <div className="text-xs text-muted-foreground font-mono">{i.article} · ячейка {i.cell}</div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs">{i.picked} / {i.qty} ед.</span>
-                          <Button size="sm" variant={openedBox === i.cell ? "default" : "outline"} onClick={() => openBox(i.cell)}>
-                            Открыть короб
-                          </Button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  {openedBox && (
-                    <div className="space-y-2 rounded-md bg-muted/40 p-3">
-                      <Label className="text-xs">Ячейка {openedBox}: пикните баркод или КИЗ товара</Label>
-                      <div className="flex gap-2">
-                        <Input autoFocus value={itemScan} onChange={(e) => setItemScan(e.target.value)}
-                          onKeyDown={(e) => e.key === "Enter" && pickItem()} placeholder="Баркод / КИЗ" />
-                        <Button onClick={pickItem}><ScanLine className="w-4 h-4" /></Button>
-                        <Button variant="outline" onClick={closeBox}>Закрыть короб</Button>
-                      </div>
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-          )}
           <DialogFooter>
-            <Button onClick={toTrolley} disabled={!current || current.status === "new"}>
-              <PackageCheck className="w-4 h-4 mr-1" />На тележку → упаковщицам
-            </Button>
+            <Button variant="outline" onClick={() => setCreateOpen(false)}>Отмена</Button>
+            <Button onClick={handleCreateSupply}>Создать</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Упаковка */}
-      <Dialog open={!!packTask} onOpenChange={(v) => !v && setPackTask(null)}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader><DialogTitle>Упаковка · {packCurrent?.city}</DialogTitle></DialogHeader>
-          {packCurrent && (
-            <div className="space-y-3">
-              <div className="flex gap-2">
-                <Input autoFocus value={packScan} onChange={(e) => setPackScan(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && scanForLabel()} placeholder="Сканируйте баркод или КИЗ (ЧЗ)" />
-                <Button onClick={scanForLabel}><Printer className="w-4 h-4" /></Button>
+      {/* Работа с поставкой */}
+      <Dialog open={!!liveSupply} onOpenChange={(o) => !o && setOpenSupply(null)}>
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-auto">
+          <DialogHeader>
+            <DialogTitle>Поставка {liveSupply?.supplyNo}</DialogTitle>
+            <DialogDescription>{liveSupply?.warehouse} · грузомест: {liveSupply?.trbx.length ?? 0}</DialogDescription>
+          </DialogHeader>
+
+          {liveSupply && (
+            <div className="space-y-4">
+              <div className="flex flex-wrap gap-2">
+                <Button size="sm" variant="outline" onClick={() => { addTrbx(liveSupply.id); toast({ title: "Грузоместо добавлено" }); }}>
+                  <PackagePlus className="w-4 h-4 mr-2" /> Добавить грузоместо
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => { printSupplyQr(liveSupply.id); toast({ title: "QR поставки отправлен на печать", description: liveSupply.qrCode }); }}>
+                  <QrCode className="w-4 h-4 mr-2" /> Печать QR поставки
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => {
+                  const n = refreshSaleStatuses(liveSupply.id);
+                  toast({
+                    title: n ? "Обнаружен отказ покупателя" : "Отказов нет",
+                    description: n ? "Неактуальное задание удалено из поставки." : "Все задания актуальны.",
+                    variant: n ? "destructive" : undefined,
+                  });
+                }}>
+                  <RefreshCw className="w-4 h-4 mr-2" /> Обновить статусы заданий
+                </Button>
+                <Button size="sm" onClick={() => { deliverSupply(liveSupply.id); setOpenSupply(null); toast({ title: "Поставка передана в доставку" }); }}>
+                  <Truck className="w-4 h-4 mr-2" /> Передать в доставку
+                </Button>
               </div>
-              <div className="space-y-1 text-sm">
-                {packCurrent.items.map((i) => (
-                  <div key={i.article} className="flex justify-between rounded-md border border-border px-3 py-2">
-                    <span>{i.name}</span>
-                    <span className="text-xs text-muted-foreground">этикеток: {i.labeled} / {i.qty}</span>
-                  </div>
-                ))}
+
+              <div className="space-y-2">
+                <Label>Добавить КИЗ в поставку</Label>
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="Сканируйте КИЗ товара"
+                    value={kizValue}
+                    onChange={(e) => setKizValue(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleKiz()}
+                  />
+                  <Button onClick={handleKiz}><ScanLine className="w-4 h-4 mr-2" /> Добавить</Button>
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  По КИЗу определяем товар и привязываем к заданию по совпадению ШК / артикула / размера.
+                </p>
               </div>
-              <div>
-                <Label className="text-xs">
-                  Количество коробов ({packCurrent.items.reduce((s, i) => s + i.qty, 0)} ед. по {packCurrent.unitsPerBox} в коробе)
-                </Label>
-                <Input type="number" value={boxesCount} onChange={(e) => setBoxesCount(e.target.value)}
-                  placeholder={String(Math.ceil(packCurrent.items.reduce((s, i) => s + i.qty, 0) / packCurrent.unitsPerBox))} />
-                <p className="text-xs text-muted-foreground mt-1">Под каждый короб будет напечатан дубль QR, выданного маркетплейсом.</p>
-              </div>
+
+              <table className="w-full text-sm border border-border rounded">
+                <thead className="bg-muted/50 text-xs uppercase text-muted-foreground">
+                  <tr>
+                    <th className="text-left px-3 py-2">Задание</th>
+                    <th className="text-left px-3 py-2">Товар</th>
+                    <th className="text-left px-3 py-2">Баркод</th>
+                    <th className="text-left px-3 py-2">КИЗ</th>
+                    <th className="text-left px-3 py-2">Стикер WB</th>
+                    <th className="px-3 py-2"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {supplyOrders.map((o: FbsOrder) => (
+                    <tr key={o.id} className="border-t border-border">
+                      <td className="px-3 py-2 font-mono text-xs">{o.orderNo}</td>
+                      <td className="px-3 py-2 text-xs">{o.article} · {o.size}</td>
+                      <td className="px-3 py-2 font-mono text-xs">{o.shk}</td>
+                      <td className="px-3 py-2 font-mono text-[10px] text-muted-foreground">{o.kiz ?? "—"}</td>
+                      <td className="px-3 py-2">
+                        <StatusBadge status={o.stickerPrinted ? "success" : "default"} label={o.stickerPrinted ? "Напечатан" : "Нет"} />
+                      </td>
+                      <td className="px-3 py-2 text-right">
+                        <Button size="sm" variant="ghost" disabled={!o.kiz} onClick={() => { printSticker(o.id); toast({ title: "Стикер WB отправлен на печать", description: `${o.article} · ${o.size}` }); }}>
+                          <Printer className="w-4 h-4 mr-1" /> Печать стикера
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                  {!supplyOrders.length && (
+                    <tr><td colSpan={6} className="px-3 py-8 text-center text-muted-foreground">В поставке нет заданий</td></tr>
+                  )}
+                </tbody>
+              </table>
             </div>
           )}
-          <DialogFooter><Button onClick={finishPacking}><QrCode className="w-4 h-4 mr-1" />Завершить заказ и печатать QR</Button></DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
