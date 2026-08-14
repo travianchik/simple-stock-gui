@@ -4,7 +4,6 @@ import {
   Package,
   ClipboardList,
   Truck,
-  RotateCcw,
   Users,
   ChevronLeft,
   ChevronRight,
@@ -22,7 +21,6 @@ const allNavItems = [
   { path: "/", label: "Сток / Инвентаризация", icon: Package },
   { path: "/receiving", label: "Приёмка товара", icon: ClipboardList },
   { path: "/fbs", label: "Отгрузка FBS / FBO", icon: QrCode },
-  { path: "/returns", label: "Возврат товара", icon: RotateCcw },
   { path: "/roles", label: "Управление ролями", icon: Users },
 ];
 

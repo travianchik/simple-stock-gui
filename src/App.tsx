@@ -14,7 +14,6 @@ import ReceivingPage from "./pages/ReceivingPage";
 import ReceiptOrdersPage from "./pages/ReceiptOrdersPage";
 import ShippingPage from "./pages/ShippingPage";
 import FbsShippingPage from "./pages/FbsShippingPage";
-import ReturnsPage from "./pages/ReturnsPage";
 import RolesPage from "./pages/RolesPage";
 import NotFound from "./pages/NotFound";
 
@@ -38,7 +37,6 @@ const App = () => (
               <Route path="/receipt-orders" element={<ReceiptOrdersPage />} />
               <Route path="/shipping" element={<ShippingPage />} />
               <Route path="/fbs" element={<FbsShippingPage />} />
-              <Route path="/returns" element={<ReturnsPage />} />
               <Route path="/roles" element={<RolesPage />} />
             </Route>
             <Route path="*" element={<NotFound />} />

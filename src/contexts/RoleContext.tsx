@@ -27,8 +27,8 @@ export const roleStatus: Record<Role, "primary" | "success" | "warning" | "defau
 
 // Access rules from TZ
 export const roleAccess: Record<Role, string[]> = {
-  warehouse_head: ["/", "/receiving", "/fbs", "/returns", "/roles"],
-  receiving_manager: ["/receiving", "/returns"],
+  warehouse_head: ["/", "/receiving", "/fbs", "/roles"],
+  receiving_manager: ["/receiving"],
   shipping_manager: ["/", "/fbs"],
   employee: [], // determined by their manager's access
 };
