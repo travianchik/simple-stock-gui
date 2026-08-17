@@ -735,6 +735,53 @@ const FbsShippingPage = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Диалог добавления грузомест */}
+      <Dialog open={trbxOpen} onOpenChange={setTrbxOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Добавить грузоместа</DialogTitle>
+            <DialogDescription>Укажите, сколько грузомест нужно добавить в поставку {liveSupply?.supplyNo}.</DialogDescription>
+          </DialogHeader>
+          <div className="py-2">
+            <Label className="text-xs">Количество</Label>
+            <Input
+              type="number"
+              min={1}
+              value={trbxCount}
+              onChange={(e) => setTrbxCount(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  const n = parseInt(trbxCount, 10);
+                  if (liveSupply && n > 0) {
+                    addTrbx(liveSupply.id, n);
+                    toast({ title: "Грузоместа добавлены", description: `Добавлено: ${n}` });
+                    setTrbxOpen(false);
+                    setTrbxCount("1");
+                  }
+                }
+              }}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setTrbxOpen(false); setTrbxCount("1"); }}>Отмена</Button>
+            <Button
+              disabled={!liveSupply || parseInt(trbxCount, 10) < 1 || isNaN(parseInt(trbxCount, 10))}
+              onClick={() => {
+                const n = parseInt(trbxCount, 10);
+                if (liveSupply && n > 0) {
+                  addTrbx(liveSupply.id, n);
+                  toast({ title: "Грузоместа добавлены", description: `Добавлено: ${n}` });
+                  setTrbxOpen(false);
+                  setTrbxCount("1");
+                }
+              }}
+            >
+              Добавить
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
