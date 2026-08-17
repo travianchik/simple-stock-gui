@@ -58,6 +58,7 @@ export interface UplBox {
   closed: boolean;
   closedAt?: string;
   cell?: string;       // ячейка хранения: стеллаж.секция.этаж.короб
+  warehouse?: string;  // склад, на котором физически лежит короб
   items: UplBoxItem[];
 }
 
