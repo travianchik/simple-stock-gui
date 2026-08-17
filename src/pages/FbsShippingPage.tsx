@@ -564,7 +564,7 @@ const FbsShippingPage = () => {
               <div className="space-y-2 rounded border border-border p-3">
                 <Label>Скан УПЛ (поиск короба и ячейки хранения)</Label>
                 <p className="text-[11px] text-muted-foreground">
-                  Разрешены только короба склада «{liveSupply.warehouse}». Товар с других складов в поставку не добавляется.
+                  Сканируйте любой короб — привязки к складу нет, поиск идёт по всему Стоку.
                 </p>
                 <div className="flex gap-2">
                   <Input
