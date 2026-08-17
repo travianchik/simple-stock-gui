@@ -382,40 +382,56 @@ const StockPage = () => {
         </DialogContent>
       </Dialog>
 
-      {/* Наполнение короба */}
+      {/* Короб: этикетка УПЛ и товары с КИЗ */}
       <Dialog open={!!boxDialog} onOpenChange={(o) => !o && setBoxDialog(null)}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-auto">
           <DialogHeader>
-            <DialogTitle>Наполнение короба {boxDialog?.uplNumber}</DialogTitle>
-            <DialogDescription>Заказ {boxDialog?.orderNumber} · ШК УПЛ {boxDialog?.uplBarcode}</DialogDescription>
+            <DialogTitle>Короб {boxDialog?.uplNumber}</DialogTitle>
+            <DialogDescription>
+              Заказ {boxDialog?.orderNumber} · ШК УПЛ {boxDialog?.uplBarcode}
+              {boxDialog?.cell ? ` · Ячейка ${boxDialog.cell}` : ""}
+            </DialogDescription>
           </DialogHeader>
           {boxDialog && (
-            <div className="space-y-3">
+            <div className="space-y-4">
+              <UplLabel box={boxDialog} />
+              <div className="text-xs uppercase tracking-wider text-muted-foreground">
+                Товары в коробе — КИЗ индивидуален для каждой единицы
+              </div>
               <table className="w-full text-sm border border-border rounded">
                 <thead className="bg-muted/50 text-xs uppercase text-muted-foreground">
                   <tr>
+                    <th className="text-left px-3 py-2">№</th>
                     <th className="text-left px-3 py-2">Артикул</th>
+                    <th className="text-left px-3 py-2">Наименование</th>
                     <th className="text-left px-3 py-2">Баркод</th>
                     <th className="text-left px-3 py-2">Размер</th>
-                    <th className="text-right px-3 py-2">Кол-во</th>
-                    <th className="text-left px-3 py-2">КИЗы</th>
+                    <th className="text-left px-3 py-2">Честный знак (КИЗ)</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {boxDialog.items.map((i) => (
-                    <tr key={i.shk} className="border-t border-border align-top">
-                      <td className="px-3 py-2">{i.article}</td>
-                      <td className="px-3 py-2 font-mono text-xs">{i.shk}</td>
-                      <td className="px-3 py-2">{i.size}</td>
-                      <td className="px-3 py-2 text-right">{i.qty}</td>
-                      <td className="px-3 py-2 text-[11px] font-mono text-muted-foreground">
-                        {i.kizes.length ? i.kizes.join(", ") : "—"}
-                      </td>
-                    </tr>
-                  ))}
+                  {boxDialog.items
+                    .flatMap((i) =>
+                      Array.from({ length: Math.max(i.qty, i.kizes.length) }).map((_, u) => ({
+                        item: i,
+                        unit: u,
+                        kiz: i.kizes[u],
+                      }))
+                    )
+                    .map((row, idx) => (
+                      <tr key={`${row.item.shk}-${row.unit}`} className="border-t border-border">
+                        <td className="px-3 py-2 text-muted-foreground">{idx + 1}</td>
+                        <td className="px-3 py-2">{row.item.article}</td>
+                        <td className="px-3 py-2 max-w-[220px] truncate" title={row.item.name}>{row.item.name}</td>
+                        <td className="px-3 py-2 font-mono text-xs">{row.item.shk}</td>
+                        <td className="px-3 py-2">{row.item.size}</td>
+                        <td className="px-3 py-2 font-mono text-[11px]">
+                          {row.kiz || <span className="text-muted-foreground">без КИЗ</span>}
+                        </td>
+                      </tr>
+                    ))}
                 </tbody>
               </table>
-              <UplLabel box={boxDialog} />
             </div>
           )}
         </DialogContent>
