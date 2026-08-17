@@ -2,7 +2,7 @@ import { Fragment, useMemo, useRef, useState } from "react";
 import * as XLSX from "xlsx";
 import {
   Upload, Plus, ScanLine, CheckCircle2, Download, UserPlus, Play, Pencil, Eye,
-  ChevronLeft, Search, PackagePlus, Printer, ScanBarcode, Package, Tag, X,
+  ChevronLeft, Search, PackagePlus, Printer, ScanBarcode, Package, Tag,
 } from "lucide-react";
 import PageHeader from "@/components/PageHeader";
 import StatusBadge from "@/components/StatusBadge";
