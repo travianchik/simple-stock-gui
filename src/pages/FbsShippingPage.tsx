@@ -189,23 +189,50 @@ const FbsShippingPage = () => {
   };
 
   /* короба и ячейки хранения по товару (данные из Стока) */
-  const cellsOfShk = (shk: string) => boxes.filter((b) => b.items.some((i) => i.shk === shk));
+  const cellsOfShk = (shk: string) =>
+    boxes.filter(
+      (b) =>
+        b.items.some((i) => i.shk === shk) &&
+        (!liveSupply || (b.warehouse ?? liveSupply.warehouse) === liveSupply.warehouse)
+    );
+
+  /* короба этого товара на других складах — сборка из них запрещена */
+  const foreignBoxesOfShk = (shk: string) =>
+    liveSupply
+      ? boxes.filter(
+          (b) => b.items.some((i) => i.shk === shk) && (b.warehouse ?? liveSupply.warehouse) !== liveSupply.warehouse
+        )
+      : [];
 
   const handleUplScan = (raw?: string) => {
     const code = (raw ?? uplValue).trim();
     if (!code) return;
     const box = findBoxByBarcode(code);
-    setUplBox(box ?? null);
     if (!box) {
+      setUplBox(null);
       toast({ title: "УПЛ не найден", description: code, variant: "destructive" });
       return;
     }
+    if (liveSupply && (box.warehouse ?? liveSupply.warehouse) !== liveSupply.warehouse) {
+      setUplBox(null);
+      toast({
+        title: "Короб с другого склада",
+        description: `Короб ${box.uplNumber} находится на складе «${box.warehouse}». Поставка собирается только по складу «${liveSupply.warehouse}».`,
+        variant: "destructive",
+      });
+      return;
+    }
+    setUplBox(box);
     toast({ title: `УПЛ ${box.uplNumber}`, description: `Ячейка хранения ${box.cell || "не назначена"}` });
   };
 
   const emulateUplScan = () => {
     const shks = supplyOrders.map((o) => o.shk);
-    const box = boxes.find((b) => b.items.some((i) => shks.includes(i.shk))) ?? boxes[0];
+    const sameWh = (b: UplBox) => !liveSupply || (b.warehouse ?? liveSupply.warehouse) === liveSupply.warehouse;
+    const box =
+      boxes.find((b) => sameWh(b) && b.items.some((i) => shks.includes(i.shk))) ??
+      boxes.find(sameWh) ??
+      boxes[0];
     if (!box) {
       toast({ title: "Коробов нет", description: "В Стоке нет коробов с УПЛ.", variant: "destructive" });
       return;
@@ -551,6 +578,9 @@ const FbsShippingPage = () => {
 
               <div className="space-y-2 rounded border border-border p-3">
                 <Label>Скан УПЛ (поиск короба и ячейки хранения)</Label>
+                <p className="text-[11px] text-muted-foreground">
+                  Разрешены только короба склада «{liveSupply.warehouse}». Товар с других складов в поставку не добавляется.
+                </p>
                 <div className="flex gap-2">
                   <Input
                     placeholder="ШК УПЛ или номер УПЛ"
@@ -627,7 +657,12 @@ const FbsShippingPage = () => {
                             ))}
                           </div>
                         ) : (
-                          <span className="text-muted-foreground">нет коробов</span>
+                          <span className="text-muted-foreground">нет коробов на складе поставки</span>
+                        )}
+                        {foreignBoxesOfShk(o.shk).length > 0 && (
+                          <div className="text-[11px] text-destructive mt-1">
+                            есть короба на других складах — добавление запрещено
+                          </div>
                         )}
                       </td>
                       <td className="px-3 py-2 font-mono text-[10px] text-muted-foreground">{o.kiz ?? "—"}</td>
