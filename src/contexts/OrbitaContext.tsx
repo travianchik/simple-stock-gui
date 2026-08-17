@@ -248,7 +248,7 @@ interface OrbitaContextType {
   setOrderStatus: (orderId: number, status: ReceiveOrderStatus) => void;
   openBox: (orderId: number) => UplBox;
   addToBox: (boxId: number, item: Omit<UplBoxItem, "kizes"> & { kiz?: string }) => void;
-  closeBox: (boxId: number) => void;
+  closeBox: (boxId: number, cell?: string) => void;
   finishOrder: (orderId: number) => void;
   boxesOfOrder: (orderId: number) => UplBox[];
   pickedQty: (orderId: number, shk: string) => number;
@@ -365,7 +365,6 @@ export const OrbitaProvider = ({ children }: { children: ReactNode }) => {
       orderId,
       orderNumber: order?.number ?? "",
       closed: false,
-      cell: `${((n - 1) % 12) + 1}.${((n * 3) % 8) + 1}.${((n * 5) % 4) + 1}.${((n * 7) % 20) + 1}`,
       items: [],
     };
     setBoxes((prev) => [box, ...prev]);
@@ -417,8 +416,10 @@ export const OrbitaProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const closeBox = (boxId: number) =>
-    setBoxes((prev) => prev.map((b) => (b.id === boxId ? { ...b, closed: true, closedAt: nowRu() } : b)));
+  const closeBox: OrbitaContextType["closeBox"] = (boxId, cell) =>
+    setBoxes((prev) =>
+      prev.map((b) => (b.id === boxId ? { ...b, closed: true, closedAt: nowRu(), cell: cell || b.cell } : b))
+    );
 
   const boxesOfOrder = (orderId: number) => boxes.filter((b) => b.orderId === orderId);
 
