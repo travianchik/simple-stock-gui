@@ -46,6 +46,11 @@ const FbsShippingPage = () => {
   const [supplyWarehouse, setSupplyWarehouse] = useState<string>(wbWarehouses[0].name);
   const [createOpen, setCreateOpen] = useState(false);
 
+  /* --- Получение новых заданий с WB --- */
+  const [fetchOpen, setFetchOpen] = useState(false);
+  const [fetchFrom, setFetchFrom] = useState("");
+  const [fetchTo, setFetchTo] = useState("");
+
   /* --- В сборке --- */
   const [openSupply, setOpenSupply] = useState<Supply | null>(null);
   const [kizValue, setKizValue] = useState("");
