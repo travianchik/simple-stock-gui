@@ -260,7 +260,7 @@ interface OrbitaContextType {
   /* FBS */
   fbsOrders: FbsOrder[];
   supplies: Supply[];
-  syncFbsNew: () => number;
+  syncFbsNew: (dateFrom: string, dateTo: string) => number;
   createSupply: (orderIds: number[], warehouse: string) => Supply | null;
   addTrbx: (supplyId: number) => void;
   attachKiz: (supplyId: number, kiz: string) => { ok: boolean; message: string };
