@@ -694,6 +694,45 @@ const FbsShippingPage = () => {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Диалог получения новых заданий с WB */}
+      <Dialog open={fetchOpen} onOpenChange={setFetchOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Получить новые задания с WB</DialogTitle>
+            <DialogDescription>Укажите период, за который нужно выгрузить сборочные задания.</DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-2 gap-4 py-2">
+            <div className="space-y-1">
+              <Label className="text-xs">Дата с</Label>
+              <Input type="date" value={fetchFrom} onChange={(e) => setFetchFrom(e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Дата по</Label>
+              <Input type="date" value={fetchTo} onChange={(e) => setFetchTo(e.target.value)} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setFetchOpen(false)}>Отмена</Button>
+            <Button
+              disabled={!fetchFrom || !fetchTo}
+              onClick={() => {
+                const n = syncFbsNew(fetchFrom, fetchTo);
+                if (n === 0) {
+                  toast({ title: "Ошибка периода", description: "Проверьте даты и повторите попытку.", variant: "destructive" });
+                } else {
+                  toast({ title: "Список обновлён по API WB", description: `Новых сборочных заданий: ${n}` });
+                }
+                setFetchOpen(false);
+                setFetchFrom("");
+                setFetchTo("");
+              }}
+            >
+              <RefreshCw className="w-4 h-4 mr-2" /> Выгрузить задания
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
