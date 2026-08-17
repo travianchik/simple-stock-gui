@@ -159,6 +159,52 @@ const initialOrders: ReceiveOrder[] = [
   },
 ];
 
+const kiz = (n: number) => `0104610547700972215${String(n).padStart(4, "0")}93Zx${String(n).padStart(3, "0")}`;
+
+const initialBoxes: UplBox[] = [
+  {
+    id: 9001,
+    uplNumber: "УПЛ-000101",
+    uplBarcode: "UPL0000000101",
+    orderId: 1,
+    orderNumber: "ЗАК-0231",
+    closed: true,
+    closedAt: "14.08.2026 10:35",
+    cell: "A1.02.3.01",
+    items: [
+      { article: "FAPPE/БРАЗ_КРУЖК/466С", size: "M", name: "Комплект трусов женских FAPPE/БРАЗ_КРУЖК/466С", shk: "2041941632583", qty: 3, kizes: [kiz(1), kiz(2), kiz(3)] },
+      { article: "FAPPE/БРАЗ_КРУЖК/466С", size: "S", name: "Комплект трусов женских FAPPE/БРАЗ_КРУЖК/466С", shk: "2041941632590", qty: 2, kizes: [kiz(4), kiz(5)] },
+    ],
+  },
+  {
+    id: 9002,
+    uplNumber: "УПЛ-000102",
+    uplBarcode: "UPL0000000102",
+    orderId: 1,
+    orderNumber: "ЗАК-0231",
+    closed: true,
+    closedAt: "14.08.2026 11:02",
+    cell: "A1.02.3.02",
+    items: [
+      { article: "FAPPE/БРАЗ_КРУЖК/466С", size: "M", name: "Комплект трусов женских FAPPE/БРАЗ_КРУЖК/466С", shk: "2041941632583", qty: 4, kizes: [kiz(6), kiz(7), kiz(8), kiz(9)] },
+      { article: "FAPPE/БРАЗ_КРУЖК/4К66", size: "XS", name: "Комплект трусов женских FAPPE/БРАЗ_КРУЖК/4К66", shk: "4610547700989", qty: 2, kizes: [kiz(10), kiz(11)] },
+    ],
+  },
+  {
+    id: 9003,
+    uplNumber: "УПЛ-000103",
+    uplBarcode: "UPL0000000103",
+    orderId: 2,
+    orderNumber: "ЗАК-0232",
+    closed: false,
+    cell: "B2.01.1.05",
+    items: [
+      { article: "FAPPE/БРАЗ_КРУЖК/4444", size: "S", name: "Комплект трусов женских FAPPE/БРАЗ_КРУЖК/4444", shk: "4610478702816", qty: 5, kizes: [] },
+      { article: "LILAC/СЛИПЫ-ЦВЕТОК/ОПРСЛ46", size: "M", name: "Трусы женские бесшовные слипы набор 7 шт MY LILAC", shk: "4660546067552", qty: 1, kizes: [kiz(12)] },
+    ],
+  },
+];
+
 const initialFbs: FbsOrder[] = [
   { id: 1, orderNo: "5488422979", createdAt: "14.08.2026 10:02", article: "LILAC/СЛИПЫ-ЦВЕТОК/ОПРСЛ46", size: "M", name: "Трусы женские бесшовные слипы набор 7 шт MY LILAC", shk: "4660546067552", wbArticle: "248282707", price: 923, warehouse: wbWarehouses[0].name, status: "new", supplyId: null },
   { id: 2, orderNo: "5488422980", createdAt: "14.08.2026 10:14", article: "FAPPE/БРАЗ_КРУЖК/466С", size: "M", name: "Комплект трусов женских FAPPE/БРАЗ_КРУЖК/466С", shk: "2041941632583", wbArticle: "288015345", price: 1016, warehouse: wbWarehouses[0].name, status: "new", supplyId: null },
@@ -213,7 +259,7 @@ export const useOrbita = () => {
 export const OrbitaProvider = ({ children }: { children: ReactNode }) => {
   const [stock, setStock] = useState<StockRow[]>(initialStock);
   const [orders, setOrders] = useState<ReceiveOrder[]>(initialOrders);
-  const [boxes, setBoxes] = useState<UplBox[]>([]);
+  const [boxes, setBoxes] = useState<UplBox[]>(initialBoxes);
   const [fbsOrders, setFbsOrders] = useState<FbsOrder[]>(initialFbs);
   const [supplies, setSupplies] = useState<Supply[]>([]);
   const [lastWbSync, setLastWbSync] = useState<string | null>(null);
