@@ -70,6 +70,23 @@ export interface ReceiveOrder {
   assigneeId: number | null;
   status: ReceiveOrderStatus;
   items: ReceiveOrderItem[];
+  mp?: string;
+  brand?: string;
+  ip?: string;
+  assigneeIds?: number[];
+}
+
+export interface ScanEvent {
+  id: number;
+  orderId: number;
+  boxId: number;
+  uplNumber: string;
+  article: string;
+  size: string;
+  name: string;
+  shk: string;
+  kiz?: string;
+  at: string;
 }
 
 /* ================= FBS ================= */
