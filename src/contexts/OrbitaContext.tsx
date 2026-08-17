@@ -70,6 +70,23 @@ export interface ReceiveOrder {
   assigneeId: number | null;
   status: ReceiveOrderStatus;
   items: ReceiveOrderItem[];
+  mp?: string;
+  brand?: string;
+  ip?: string;
+  assigneeIds?: number[];
+}
+
+export interface ScanEvent {
+  id: number;
+  orderId: number;
+  boxId: number;
+  uplNumber: string;
+  article: string;
+  size: string;
+  name: string;
+  shk: string;
+  kiz?: string;
+  at: string;
 }
 
 /* ================= FBS ================= */
@@ -224,8 +241,11 @@ interface OrbitaContextType {
   /* приёмка */
   orders: ReceiveOrder[];
   boxes: UplBox[];
+  scans: ScanEvent[];
   addOrder: (o: Omit<ReceiveOrder, "id" | "status" | "createdAt">) => void;
   assignOrder: (orderId: number, assigneeId: number) => void;
+  assignEmployees: (orderId: number, ids: number[]) => void;
+  setOrderStatus: (orderId: number, status: ReceiveOrderStatus) => void;
   openBox: (orderId: number) => UplBox;
   addToBox: (boxId: number, item: Omit<UplBoxItem, "kizes"> & { kiz?: string }) => void;
   closeBox: (boxId: number) => void;
@@ -260,6 +280,7 @@ export const OrbitaProvider = ({ children }: { children: ReactNode }) => {
   const [stock, setStock] = useState<StockRow[]>(initialStock);
   const [orders, setOrders] = useState<ReceiveOrder[]>(initialOrders);
   const [boxes, setBoxes] = useState<UplBox[]>(initialBoxes);
+  const [scans, setScans] = useState<ScanEvent[]>([]);
   const [fbsOrders, setFbsOrders] = useState<FbsOrder[]>(initialFbs);
   const [supplies, setSupplies] = useState<Supply[]>([]);
   const [lastWbSync, setLastWbSync] = useState<string | null>(null);
@@ -322,6 +343,18 @@ export const OrbitaProvider = ({ children }: { children: ReactNode }) => {
   const assignOrder = (orderId: number, assigneeId: number) =>
     setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, assigneeId, status: o.status === "new" ? "in_progress" : o.status } : o)));
 
+  const assignEmployees: OrbitaContextType["assignEmployees"] = (orderId, ids) =>
+    setOrders((prev) =>
+      prev.map((o) =>
+        o.id === orderId
+          ? { ...o, assigneeIds: ids, assigneeId: ids[0] ?? null, status: o.status === "new" && ids.length ? "in_progress" : o.status }
+          : o
+      )
+    );
+
+  const setOrderStatus: OrbitaContextType["setOrderStatus"] = (orderId, status) =>
+    setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, status } : o)));
+
   const openBox: OrbitaContextType["openBox"] = (orderId) => {
     const order = orders.find((o) => o.id === orderId);
     const n = nextSeq();
@@ -339,7 +372,7 @@ export const OrbitaProvider = ({ children }: { children: ReactNode }) => {
     return box;
   };
 
-  const addToBox: OrbitaContextType["addToBox"] = (boxId, item) =>
+  const addToBox: OrbitaContextType["addToBox"] = (boxId, item) => {
     setBoxes((prev) =>
       prev.map((b) => {
         if (b.id !== boxId) return b;
@@ -364,6 +397,25 @@ export const OrbitaProvider = ({ children }: { children: ReactNode }) => {
         return { ...b, items };
       })
     );
+    const box = boxes.find((b) => b.id === boxId);
+    if (box) {
+      setScans((prev) => [
+        {
+          id: Date.now() + Math.random(),
+          orderId: box.orderId,
+          boxId: box.id,
+          uplNumber: box.uplNumber,
+          article: item.article,
+          size: item.size,
+          name: item.name,
+          shk: item.shk,
+          kiz: item.kiz,
+          at: nowRu(),
+        },
+        ...prev,
+      ]);
+    }
+  };
 
   const closeBox = (boxId: number) =>
     setBoxes((prev) => prev.map((b) => (b.id === boxId ? { ...b, closed: true, closedAt: nowRu() } : b)));
@@ -523,6 +575,9 @@ export const OrbitaProvider = ({ children }: { children: ReactNode }) => {
         boxes,
         addOrder,
         assignOrder,
+        scans,
+        assignEmployees,
+        setOrderStatus,
         openBox,
         addToBox,
         closeBox,
