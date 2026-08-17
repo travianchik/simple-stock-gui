@@ -262,7 +262,7 @@ interface OrbitaContextType {
   supplies: Supply[];
   syncFbsNew: (dateFrom: string, dateTo: string) => number;
   createSupply: (orderIds: number[], warehouse: string) => Supply | null;
-  addTrbx: (supplyId: number) => void;
+  addTrbx: (supplyId: number, count?: number) => void;
   attachKiz: (supplyId: number, kiz: string) => { ok: boolean; message: string };
   printSticker: (orderId: number) => void;
   printSupplyQr: (supplyId: number) => void;
@@ -535,9 +535,16 @@ export const OrbitaProvider = ({ children }: { children: ReactNode }) => {
     return supply;
   };
 
-  const addTrbx = (supplyId: number) =>
+  const addTrbx = (supplyId: number, count = 1) =>
     setSupplies((prev) =>
-      prev.map((s) => (s.id === supplyId ? { ...s, trbx: [...s.trbx, { id: `ГМ-${s.trbx.length + 1}` }] } : s))
+      prev.map((s) => {
+        if (s.id !== supplyId) return s;
+        const next = [...s.trbx];
+        for (let i = 0; i < count; i++) {
+          next.push({ id: `ГМ-${next.length + 1}` });
+        }
+        return { ...s, trbx: next };
+      })
     );
 
   const attachKiz: OrbitaContextType["attachKiz"] = (supplyId, kiz) => {

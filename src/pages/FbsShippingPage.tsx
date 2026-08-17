@@ -57,6 +57,8 @@ const FbsShippingPage = () => {
   const [emulating, setEmulating] = useState(false);
   const [uplValue, setUplValue] = useState("");
   const [uplBox, setUplBox] = useState<UplBox | null>(null);
+  const [trbxOpen, setTrbxOpen] = useState(false);
+  const [trbxCount, setTrbxCount] = useState("1");
 
   /* --- Завершённые --- */
   const [doneSelected, setDoneSelected] = useState<number[]>([]);
@@ -560,7 +562,7 @@ const FbsShippingPage = () => {
           {liveSupply && (
             <div className="space-y-4">
               <div className="flex flex-wrap gap-2">
-                <Button size="sm" variant="outline" onClick={() => { addTrbx(liveSupply.id); toast({ title: "Грузоместо добавлено" }); }}>
+                <Button size="sm" variant="outline" onClick={() => { setTrbxCount("1"); setTrbxOpen(true); }}>
                   <PackagePlus className="w-4 h-4 mr-2" /> Добавить грузоместо
                 </Button>
                 <Button size="sm" variant="outline" onClick={() => { printSupplyQr(liveSupply.id); toast({ title: "QR поставки отправлен на печать", description: liveSupply.qrCode }); }}>
@@ -729,6 +731,53 @@ const FbsShippingPage = () => {
               }}
             >
               <RefreshCw className="w-4 h-4 mr-2" /> Выгрузить задания
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Диалог добавления грузомест */}
+      <Dialog open={trbxOpen} onOpenChange={setTrbxOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Добавить грузоместа</DialogTitle>
+            <DialogDescription>Укажите, сколько грузомест нужно добавить в поставку {liveSupply?.supplyNo}.</DialogDescription>
+          </DialogHeader>
+          <div className="py-2">
+            <Label className="text-xs">Количество</Label>
+            <Input
+              type="number"
+              min={1}
+              value={trbxCount}
+              onChange={(e) => setTrbxCount(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  const n = parseInt(trbxCount, 10);
+                  if (liveSupply && n > 0) {
+                    addTrbx(liveSupply.id, n);
+                    toast({ title: "Грузоместа добавлены", description: `Добавлено: ${n}` });
+                    setTrbxOpen(false);
+                    setTrbxCount("1");
+                  }
+                }
+              }}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setTrbxOpen(false); setTrbxCount("1"); }}>Отмена</Button>
+            <Button
+              disabled={!liveSupply || parseInt(trbxCount, 10) < 1 || isNaN(parseInt(trbxCount, 10))}
+              onClick={() => {
+                const n = parseInt(trbxCount, 10);
+                if (liveSupply && n > 0) {
+                  addTrbx(liveSupply.id, n);
+                  toast({ title: "Грузоместа добавлены", description: `Добавлено: ${n}` });
+                  setTrbxOpen(false);
+                  setTrbxCount("1");
+                }
+              }}
+            >
+              Добавить
             </Button>
           </DialogFooter>
         </DialogContent>
