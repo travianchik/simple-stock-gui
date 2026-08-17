@@ -644,6 +644,7 @@ const FbsShippingPage = () => {
                     <tr key={o.id} className="border-t border-border">
                       <td className="px-3 py-2 font-mono text-xs">{o.orderNo}</td>
                       <td className="px-3 py-2 text-xs">{o.article} · {o.size}</td>
+                      <td className="px-3 py-2 font-mono text-xs">{o.shk}</td>
                       <td className="px-3 py-2 text-xs">
                         {cellsOfShk(o.shk).length ? (
                           <div className="space-y-0.5">
