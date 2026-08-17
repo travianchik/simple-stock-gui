@@ -492,8 +492,8 @@ export const OrbitaProvider = ({ children }: { children: ReactNode }) => {
     if (!dateFrom || !dateTo || isNaN(start) || isNaN(end) || end < start) return 0;
     const base = fbsOrders.length;
     const pool = stock.length ? stock : initialStock;
-    const days = Math.max(1, Math.ceil((end - start) / (1000 * 60 * 60 * 24)));
-    const count = Math.min(15, Math.max(3, days * 2));
+    const hours = Math.max(1, Math.ceil((end - start) / (1000 * 60 * 60)));
+    const count = Math.min(15, Math.max(3, Math.ceil(hours / 6)));
     const created: FbsOrder[] = Array.from({ length: count }).map((_, k) => {
       const src = pool[(base + k) % pool.length];
       return {
