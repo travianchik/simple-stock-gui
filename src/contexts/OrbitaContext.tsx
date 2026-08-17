@@ -259,7 +259,7 @@ export const useOrbita = () => {
 export const OrbitaProvider = ({ children }: { children: ReactNode }) => {
   const [stock, setStock] = useState<StockRow[]>(initialStock);
   const [orders, setOrders] = useState<ReceiveOrder[]>(initialOrders);
-  const [boxes, setBoxes] = useState<UplBox[]>([]);
+  const [boxes, setBoxes] = useState<UplBox[]>(initialBoxes);
   const [fbsOrders, setFbsOrders] = useState<FbsOrder[]>(initialFbs);
   const [supplies, setSupplies] = useState<Supply[]>([]);
   const [lastWbSync, setLastWbSync] = useState<string | null>(null);
