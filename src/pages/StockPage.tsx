@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { Fragment, useMemo, useRef, useState } from "react";
 import * as XLSX from "xlsx";
 import { Download, Upload, RefreshCw, Search, ScanLine, Boxes, FileSpreadsheet, ChevronDown, ChevronRight } from "lucide-react";
 import PageHeader from "@/components/PageHeader";
@@ -191,6 +191,9 @@ const StockPage = () => {
             <Button variant="outline" size="sm" onClick={exportStock}>
               <Download className="w-4 h-4 mr-2" /> Скачать Excel
             </Button>
+            <Button variant="outline" size="sm" onClick={() => { setScanOpen(true); setScanCode(""); setFoundBox(null); }}>
+              <ScanLine className="w-4 h-4 mr-2" /> Сканировать ШК УПЛ
+            </Button>
           </>
         }
       />
@@ -252,9 +255,8 @@ const StockPage = () => {
                     const rowBoxes = boxesOfShk(r.shk);
                     const isOpen = expanded === r.id;
                     return (
-                    <>
+                    <Fragment key={r.id}>
                     <tr
-                      key={r.id}
                       onClick={() => setExpanded(isOpen ? null : r.id)}
                       className={`border-t border-border cursor-pointer ${r.deficit > 0 ? "bg-destructive/10" : "hover:bg-muted/30"}`}
                     >
@@ -279,7 +281,7 @@ const StockPage = () => {
                       <td className="px-3 py-2 text-right">{r.surplus || "—"}</td>
                     </tr>
                     {isOpen && (
-                      <tr key={`${r.id}-boxes`} className="border-t border-border bg-muted/20">
+                      <tr className="border-t border-border bg-muted/20">
                         <td colSpan={14} className="px-6 py-3">
                           {rowBoxes.length ? (
                             <div className="space-y-2">
@@ -334,7 +336,7 @@ const StockPage = () => {
                         </td>
                       </tr>
                     )}
-                    </>
+                    </Fragment>
                   );})}
                   {!rows.length && (
                     <tr>
