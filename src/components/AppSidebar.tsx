@@ -18,7 +18,7 @@ import StatusBadge from "@/components/StatusBadge";
 import { roleStatus } from "@/contexts/RoleContext";
 
 const allNavItems = [
-  { path: "/", label: "Сток / Инвентаризация", icon: Package },
+  { path: "/", label: "Сток", icon: Package },
   { path: "/receiving", label: "Приёмка товара", icon: ClipboardList },
   { path: "/fbs", label: "Отгрузка FBS / FBO", icon: QrCode },
   { path: "/roles", label: "Управление ролями", icon: Users },
