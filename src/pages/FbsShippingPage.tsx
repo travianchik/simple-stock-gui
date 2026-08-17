@@ -700,16 +700,16 @@ const FbsShippingPage = () => {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Получить новые задания с WB</DialogTitle>
-            <DialogDescription>Укажите период, за который нужно выгрузить сборочные задания.</DialogDescription>
+            <DialogDescription>Укажите период (дата и время), за который нужно выгрузить сборочные задания.</DialogDescription>
           </DialogHeader>
           <div className="grid grid-cols-2 gap-4 py-2">
             <div className="space-y-1">
-              <Label className="text-xs">Дата с</Label>
-              <Input type="date" value={fetchFrom} onChange={(e) => setFetchFrom(e.target.value)} />
+              <Label className="text-xs">Дата и время с</Label>
+              <Input type="datetime-local" step={60} value={fetchFrom} onChange={(e) => setFetchFrom(e.target.value)} />
             </div>
             <div className="space-y-1">
-              <Label className="text-xs">Дата по</Label>
-              <Input type="date" value={fetchTo} onChange={(e) => setFetchTo(e.target.value)} />
+              <Label className="text-xs">Дата и время по</Label>
+              <Input type="datetime-local" step={60} value={fetchTo} onChange={(e) => setFetchTo(e.target.value)} />
             </div>
           </div>
           <DialogFooter>
@@ -719,7 +719,7 @@ const FbsShippingPage = () => {
               onClick={() => {
                 const n = syncFbsNew(fetchFrom, fetchTo);
                 if (n === 0) {
-                  toast({ title: "Ошибка периода", description: "Проверьте даты и повторите попытку.", variant: "destructive" });
+                  toast({ title: "Ошибка периода", description: "Проверьте дату и время и повторите попытку.", variant: "destructive" });
                 } else {
                   toast({ title: "Список обновлён по API WB", description: `Новых сборочных заданий: ${n}` });
                 }
