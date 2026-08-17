@@ -20,7 +20,7 @@ import { roleStatus } from "@/contexts/RoleContext";
 const allNavItems = [
   { path: "/", label: "Сток", icon: Package },
   { path: "/receiving", label: "Приёмка товара", icon: ClipboardList },
-  { path: "/fbs", label: "Отгрузка FBS / FBO", icon: QrCode },
+  { path: "/fbs", label: "Работа с FBS WB", icon: QrCode },
   { path: "/roles", label: "Управление ролями", icon: Users },
 ];
 
