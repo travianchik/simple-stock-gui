@@ -1,12 +1,11 @@
 import { useMemo, useRef, useState } from "react";
 import * as XLSX from "xlsx";
-import { Download, Upload, RefreshCw, Search, ScanLine, Boxes, FileSpreadsheet } from "lucide-react";
+import { Download, Upload, RefreshCw, Search, ScanLine, Boxes, FileSpreadsheet, ChevronDown, ChevronRight } from "lucide-react";
 import PageHeader from "@/components/PageHeader";
 import StatusBadge from "@/components/StatusBadge";
 import UplLabel from "@/components/UplLabel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
@@ -41,6 +40,9 @@ const StockPage = () => {
   const [scanCode, setScanCode] = useState("");
   const [foundBox, setFoundBox] = useState<UplBox | null>(null);
   const [boxDialog, setBoxDialog] = useState<UplBox | null>(null);
+  const [expanded, setExpanded] = useState<number | null>(null);
+
+  const boxesOfShk = (shk: string) => boxes.filter((b) => b.items.some((i) => i.shk === shk));
 
   const articles = useMemo(
     () => Array.from(new Set(stockComputed.map((r) => r.article))).sort(),
