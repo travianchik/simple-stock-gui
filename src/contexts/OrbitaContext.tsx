@@ -241,8 +241,11 @@ interface OrbitaContextType {
   /* приёмка */
   orders: ReceiveOrder[];
   boxes: UplBox[];
+  scans: ScanEvent[];
   addOrder: (o: Omit<ReceiveOrder, "id" | "status" | "createdAt">) => void;
   assignOrder: (orderId: number, assigneeId: number) => void;
+  assignEmployees: (orderId: number, ids: number[]) => void;
+  setOrderStatus: (orderId: number, status: ReceiveOrderStatus) => void;
   openBox: (orderId: number) => UplBox;
   addToBox: (boxId: number, item: Omit<UplBoxItem, "kizes"> & { kiz?: string }) => void;
   closeBox: (boxId: number) => void;
