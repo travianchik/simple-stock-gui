@@ -73,6 +73,8 @@ const ReceivingPage = () => {
   const [scanValue, setScanValue] = useState("");
   const [labelBox, setLabelBox] = useState<UplBox | null>(null);
   const [posSearch, setPosSearch] = useState("");
+  const [cellDialogOpen, setCellDialogOpen] = useState(false);
+  const [cellValue, setCellValue] = useState("");
 
   const employees = users;
   const openOrder = orders.find((o) => o.id === openOrderId) || null;
@@ -174,7 +176,7 @@ const ReceivingPage = () => {
     if (openOrderId == null) return;
     const box = openBox(openOrderId);
     setActiveBoxId(box.id);
-    toast({ title: `Короб открыт: ${box.uplNumber}`, description: `Ячейка ${box.cell}` });
+    toast({ title: `Короб открыт: ${box.uplNumber}`, description: "Ячейку назначим при закрытии короба." });
   };
 
   const handleScan = (raw?: string) => {
@@ -220,12 +222,40 @@ const ReceivingPage = () => {
     handleScan(openOrder.method === "kiz" ? item.kizes?.[0] || item.shk : item.shk);
   };
 
+  /* нормализация ячейки: принимаем текст и скан QR/ШК ячейки */
+  const parseCell = (raw: string) => {
+    const v = raw.trim().toUpperCase();
+    const m = v.match(/([A-ZА-Я]?\d{0,2}[A-ZА-Я]?[.\-/]\d{1,2}[.\-/]\d{1,2}[.\-/]\d{1,2})/);
+    const found = m ? m[1] : v.replace(/^CELL[:=]?/i, "");
+    return found.replace(/[-/]/g, ".");
+  };
+
   const handleCloseBox = () => {
     if (!activeBox) return;
-    closeBox(activeBox.id);
-    setLabelBox({ ...activeBox, closed: true, closedAt: new Date().toLocaleString("ru-RU") });
+    setCellValue(activeBox.cell ?? "");
+    setCellDialogOpen(true);
+  };
+
+  const emulateCellScan = () => {
+    const rack = String.fromCharCode(65 + Math.floor(Math.random() * 4)) + (1 + Math.floor(Math.random() * 3));
+    const p = (n: number) => String(n).padStart(2, "0");
+    setCellValue(`${rack}.${p(1 + Math.floor(Math.random() * 12))}.${1 + Math.floor(Math.random() * 4)}.${p(1 + Math.floor(Math.random() * 20))}`);
+    toast({ title: "Ячейка считана сканером" });
+  };
+
+  const confirmCloseBox = () => {
+    if (!activeBox) return;
+    const cell = parseCell(cellValue);
+    if (!cell) {
+      toast({ title: "Укажите ячейку хранения", description: "Введите вручную или отсканируйте QR/ШК ячейки.", variant: "destructive" });
+      return;
+    }
+    closeBox(activeBox.id, cell);
+    setLabelBox({ ...activeBox, cell, closed: true, closedAt: new Date().toLocaleString("ru-RU") });
     setActiveBoxId(null);
-    toast({ title: `Короб ${activeBox.uplNumber} закрыт`, description: "УПЛ можно печатать." });
+    setCellDialogOpen(false);
+    setCellValue("");
+    toast({ title: `Короб ${activeBox.uplNumber} закрыт`, description: `Ячейка хранения ${cell}. УПЛ можно печатать.` });
   };
 
   const handleFinish = (orderId: number) => {
@@ -391,7 +421,7 @@ const ReceivingPage = () => {
                     <Button onClick={() => handleScan()}><ScanLine className="w-4 h-4 mr-1" /> В короб</Button>
                   </div>
                   <div className="text-xs text-muted-foreground">
-                    Активный короб: <b>{activeBox.uplNumber}</b> · ячейка {activeBox.cell} · в коробе{" "}
+                    Активный короб: <b>{activeBox.uplNumber}</b> · ячейка {activeBox.cell || "будет назначена при закрытии"} · в коробе{" "}
                     {activeBox.items.reduce((s, i) => s + i.qty, 0)} шт
                   </div>
                 </div>
@@ -416,7 +446,7 @@ const ReceivingPage = () => {
                     <tr key={b.id} className="border-t border-border">
                       <td className="px-3 py-2 font-medium">{b.uplNumber}</td>
                       <td className="px-3 py-2 font-mono text-xs">{b.uplBarcode}</td>
-                      <td className="px-3 py-2 font-mono text-xs">{b.cell}</td>
+                      <td className="px-3 py-2 font-mono text-xs">{b.cell || "—"}</td>
                       <td className="px-3 py-2 text-right">{b.items.reduce((s, i) => s + i.qty, 0)}</td>
                       <td className="px-3 py-2">
                         <StatusBadge status={b.closed ? "success" : "warning"} label={b.closed ? "Закрыт" : "Открыт"} />
@@ -637,6 +667,44 @@ const ReceivingPage = () => {
         </Dialog>
 
         {/* Печать УПЛ */}
+        {/* Назначение ячейки хранения при закрытии короба */}
+        <Dialog open={cellDialogOpen} onOpenChange={setCellDialogOpen}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Ячейка хранения для {activeBox?.uplNumber}</DialogTitle>
+              <DialogDescription>
+                Введите адрес вручную или отсканируйте QR/штрих-код ячейки — формат стеллаж.секция.этаж.короб
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3">
+              <Label>Ячейка</Label>
+              <div className="flex gap-2">
+                <Input
+                  autoFocus
+                  value={cellValue}
+                  onChange={(e) => setCellValue(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && confirmCloseBox()}
+                  placeholder="A1.02.3.01 или скан QR ячейки"
+                />
+                <Button variant="outline" onClick={emulateCellScan}>
+                  <ScanBarcode className="w-4 h-4 mr-1" /> Скан
+                </Button>
+              </div>
+              {cellValue && (
+                <div className="text-xs text-muted-foreground">
+                  Будет назначена ячейка: <b className="font-mono text-foreground">{parseCell(cellValue) || "—"}</b>
+                </div>
+              )}
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setCellDialogOpen(false)}>Отмена</Button>
+              <Button onClick={confirmCloseBox}>
+                <Printer className="w-4 h-4 mr-2" /> Закрыть короб и печатать УПЛ
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
         <Dialog open={!!labelBox} onOpenChange={(o) => !o && setLabelBox(null)}>
           <DialogContent className="max-w-md">
             <DialogHeader>
