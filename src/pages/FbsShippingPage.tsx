@@ -57,6 +57,8 @@ const FbsShippingPage = () => {
   const [emulating, setEmulating] = useState(false);
   const [uplValue, setUplValue] = useState("");
   const [uplBox, setUplBox] = useState<UplBox | null>(null);
+  const [trbxOpen, setTrbxOpen] = useState(false);
+  const [trbxCount, setTrbxCount] = useState("1");
 
   /* --- Завершённые --- */
   const [doneSelected, setDoneSelected] = useState<number[]>([]);
@@ -560,7 +562,7 @@ const FbsShippingPage = () => {
           {liveSupply && (
             <div className="space-y-4">
               <div className="flex flex-wrap gap-2">
-                <Button size="sm" variant="outline" onClick={() => { addTrbx(liveSupply.id); toast({ title: "Грузоместо добавлено" }); }}>
+                <Button size="sm" variant="outline" onClick={() => { setTrbxCount("1"); setTrbxOpen(true); }}>
                   <PackagePlus className="w-4 h-4 mr-2" /> Добавить грузоместо
                 </Button>
                 <Button size="sm" variant="outline" onClick={() => { printSupplyQr(liveSupply.id); toast({ title: "QR поставки отправлен на печать", description: liveSupply.qrCode }); }}>
