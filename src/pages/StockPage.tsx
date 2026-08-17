@@ -296,7 +296,6 @@ const StockPage = () => {
                                     <th className="text-left px-3 py-2">Ячейка</th>
                                     <th className="text-left px-3 py-2">Заказ приёмки</th>
                                     <th className="text-right px-3 py-2">Кол-во в коробе</th>
-                                    <th className="text-left px-3 py-2">КИЗы</th>
                                     <th className="text-left px-3 py-2">Статус</th>
                                     <th className="px-3 py-2"></th>
                                   </tr>
@@ -305,21 +304,22 @@ const StockPage = () => {
                                   {rowBoxes.map((b) => {
                                     const it = b.items.find((i) => i.shk === r.shk);
                                     return (
-                                      <tr key={b.id} className="border-t border-border">
+                                      <tr
+                                        key={b.id}
+                                        onClick={(e) => { e.stopPropagation(); setBoxDialog(b); }}
+                                        className="border-t border-border cursor-pointer hover:bg-muted/40"
+                                      >
                                         <td className="px-3 py-2 font-medium">{b.uplNumber}</td>
                                         <td className="px-3 py-2 font-mono text-xs">{b.uplBarcode}</td>
                                         <td className="px-3 py-2 font-mono text-xs">{b.cell || "не размещён"}</td>
                                         <td className="px-3 py-2">{b.orderNumber}</td>
                                         <td className="px-3 py-2 text-right">{it?.qty ?? 0}</td>
-                                        <td className="px-3 py-2 text-[11px] font-mono text-muted-foreground max-w-[240px] truncate">
-                                          {it?.kizes.length ? it.kizes.join(", ") : "—"}
-                                        </td>
                                         <td className="px-3 py-2">
                                           <StatusBadge status={b.closed ? "success" : "warning"} label={b.closed ? "Закрыт" : "Открыт"} />
                                         </td>
                                         <td className="px-3 py-2 text-right">
                                           <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setBoxDialog(b); }}>
-                                            <Boxes className="w-4 h-4 mr-1" /> Наполнение
+                                            <Boxes className="w-4 h-4 mr-1" /> Открыть УПЛ
                                           </Button>
                                         </td>
                                       </tr>
@@ -382,40 +382,56 @@ const StockPage = () => {
         </DialogContent>
       </Dialog>
 
-      {/* Наполнение короба */}
+      {/* Короб: этикетка УПЛ и товары с КИЗ */}
       <Dialog open={!!boxDialog} onOpenChange={(o) => !o && setBoxDialog(null)}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-auto">
           <DialogHeader>
-            <DialogTitle>Наполнение короба {boxDialog?.uplNumber}</DialogTitle>
-            <DialogDescription>Заказ {boxDialog?.orderNumber} · ШК УПЛ {boxDialog?.uplBarcode}</DialogDescription>
+            <DialogTitle>Короб {boxDialog?.uplNumber}</DialogTitle>
+            <DialogDescription>
+              Заказ {boxDialog?.orderNumber} · ШК УПЛ {boxDialog?.uplBarcode}
+              {boxDialog?.cell ? ` · Ячейка ${boxDialog.cell}` : ""}
+            </DialogDescription>
           </DialogHeader>
           {boxDialog && (
-            <div className="space-y-3">
+            <div className="space-y-4">
+              <UplLabel box={boxDialog} />
+              <div className="text-xs uppercase tracking-wider text-muted-foreground">
+                Товары в коробе — КИЗ индивидуален для каждой единицы
+              </div>
               <table className="w-full text-sm border border-border rounded">
                 <thead className="bg-muted/50 text-xs uppercase text-muted-foreground">
                   <tr>
+                    <th className="text-left px-3 py-2">№</th>
                     <th className="text-left px-3 py-2">Артикул</th>
+                    <th className="text-left px-3 py-2">Наименование</th>
                     <th className="text-left px-3 py-2">Баркод</th>
                     <th className="text-left px-3 py-2">Размер</th>
-                    <th className="text-right px-3 py-2">Кол-во</th>
-                    <th className="text-left px-3 py-2">КИЗы</th>
+                    <th className="text-left px-3 py-2">Честный знак (КИЗ)</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {boxDialog.items.map((i) => (
-                    <tr key={i.shk} className="border-t border-border align-top">
-                      <td className="px-3 py-2">{i.article}</td>
-                      <td className="px-3 py-2 font-mono text-xs">{i.shk}</td>
-                      <td className="px-3 py-2">{i.size}</td>
-                      <td className="px-3 py-2 text-right">{i.qty}</td>
-                      <td className="px-3 py-2 text-[11px] font-mono text-muted-foreground">
-                        {i.kizes.length ? i.kizes.join(", ") : "—"}
-                      </td>
-                    </tr>
-                  ))}
+                  {boxDialog.items
+                    .flatMap((i) =>
+                      Array.from({ length: Math.max(i.qty, i.kizes.length) }).map((_, u) => ({
+                        item: i,
+                        unit: u,
+                        kiz: i.kizes[u],
+                      }))
+                    )
+                    .map((row, idx) => (
+                      <tr key={`${row.item.shk}-${row.unit}`} className="border-t border-border">
+                        <td className="px-3 py-2 text-muted-foreground">{idx + 1}</td>
+                        <td className="px-3 py-2">{row.item.article}</td>
+                        <td className="px-3 py-2 max-w-[220px] truncate" title={row.item.name}>{row.item.name}</td>
+                        <td className="px-3 py-2 font-mono text-xs">{row.item.shk}</td>
+                        <td className="px-3 py-2">{row.item.size}</td>
+                        <td className="px-3 py-2 font-mono text-[11px]">
+                          {row.kiz || <span className="text-muted-foreground">без КИЗ</span>}
+                        </td>
+                      </tr>
+                    ))}
                 </tbody>
               </table>
-              <UplLabel box={boxDialog} />
             </div>
           )}
         </DialogContent>
