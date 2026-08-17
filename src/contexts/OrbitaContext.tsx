@@ -550,22 +550,10 @@ export const OrbitaProvider = ({ children }: { children: ReactNode }) => {
   const attachKiz: OrbitaContextType["attachKiz"] = (supplyId, kiz) => {
     const code = kiz.trim();
     if (!code) return { ok: false, message: "Пустой КИЗ" };
-    const supply = supplies.find((s) => s.id === supplyId);
     const target = fbsOrders.find(
       (o) => o.supplyId === supplyId && !o.kiz && (code.includes(o.shk) || code.includes(o.article) || code === o.shk)
     );
     if (!target) return { ok: false, message: "Товар по КИЗу не найден в поставке (нет совпадения по ШК/артикулу/размеру)" };
-    /* запрет сборки из разных складов: товар должен лежать в коробе того же склада, что и поставка */
-    if (supply) {
-      const withShk = boxes.filter((b) => b.items.some((i) => i.shk === target.shk));
-      if (withShk.length && !withShk.some((b) => (b.warehouse ?? supply.warehouse) === supply.warehouse)) {
-        const other = withShk.map((b) => b.warehouse).filter(Boolean).join(", ");
-        return {
-          ok: false,
-          message: `Товар хранится на другом складе (${other}). Поставка собирается только по складу «${supply.warehouse}».`,
-        };
-      }
-    }
     setFbsOrders((prev) => prev.map((o) => (o.id === target.id ? { ...o, kiz: code } : o)));
     return { ok: true, message: `КИЗ привязан: ${target.article} · ${target.size} · задание ${target.orderNo}` };
   };
