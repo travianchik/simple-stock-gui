@@ -255,7 +255,7 @@ const FbsShippingPage = () => {
         title="Работа с FBS WB"
         description="Новое → В сборке → В доставке → Завершённые. Обмен с WB по API."
         actions={
-          <Button size="sm" onClick={() => { const n = syncFbsNew(); toast({ title: "Список обновлён по API WB", description: `Новых сборочных заданий: ${n}` }); }}>
+          <Button size="sm" onClick={() => setFetchOpen(true)}>
             <RefreshCw className="w-4 h-4 mr-2" /> Получить новые задания
           </Button>
         }
