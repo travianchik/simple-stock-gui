@@ -296,7 +296,6 @@ const StockPage = () => {
                                     <th className="text-left px-3 py-2">Ячейка</th>
                                     <th className="text-left px-3 py-2">Заказ приёмки</th>
                                     <th className="text-right px-3 py-2">Кол-во в коробе</th>
-                                    <th className="text-left px-3 py-2">КИЗы</th>
                                     <th className="text-left px-3 py-2">Статус</th>
                                     <th className="px-3 py-2"></th>
                                   </tr>
@@ -305,21 +304,22 @@ const StockPage = () => {
                                   {rowBoxes.map((b) => {
                                     const it = b.items.find((i) => i.shk === r.shk);
                                     return (
-                                      <tr key={b.id} className="border-t border-border">
+                                      <tr
+                                        key={b.id}
+                                        onClick={(e) => { e.stopPropagation(); setBoxDialog(b); }}
+                                        className="border-t border-border cursor-pointer hover:bg-muted/40"
+                                      >
                                         <td className="px-3 py-2 font-medium">{b.uplNumber}</td>
                                         <td className="px-3 py-2 font-mono text-xs">{b.uplBarcode}</td>
                                         <td className="px-3 py-2 font-mono text-xs">{b.cell || "не размещён"}</td>
                                         <td className="px-3 py-2">{b.orderNumber}</td>
                                         <td className="px-3 py-2 text-right">{it?.qty ?? 0}</td>
-                                        <td className="px-3 py-2 text-[11px] font-mono text-muted-foreground max-w-[240px] truncate">
-                                          {it?.kizes.length ? it.kizes.join(", ") : "—"}
-                                        </td>
                                         <td className="px-3 py-2">
                                           <StatusBadge status={b.closed ? "success" : "warning"} label={b.closed ? "Закрыт" : "Открыт"} />
                                         </td>
                                         <td className="px-3 py-2 text-right">
                                           <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setBoxDialog(b); }}>
-                                            <Boxes className="w-4 h-4 mr-1" /> Наполнение
+                                            <Boxes className="w-4 h-4 mr-1" /> Открыть УПЛ
                                           </Button>
                                         </td>
                                       </tr>
