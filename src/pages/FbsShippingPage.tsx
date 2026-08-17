@@ -11,7 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { useOrbita, wbWarehouses, type FbsOrder, type Supply } from "@/contexts/OrbitaContext";
+import { useOrbita, wbWarehouses, type FbsOrder, type Supply, type UplBox } from "@/contexts/OrbitaContext";
 
 const toDate = (ru: string) => {
   const [d, t] = ru.split(" ");
@@ -33,6 +33,8 @@ const FbsShippingPage = () => {
     refreshSaleStatuses,
     markUpdGenerated,
     ordersOfSupply,
+    boxes,
+    findBoxByBarcode,
   } = useOrbita();
   const { toast } = useToast();
 
@@ -48,6 +50,8 @@ const FbsShippingPage = () => {
   const [openSupply, setOpenSupply] = useState<Supply | null>(null);
   const [kizValue, setKizValue] = useState("");
   const [emulating, setEmulating] = useState(false);
+  const [uplValue, setUplValue] = useState("");
+  const [uplBox, setUplBox] = useState<UplBox | null>(null);
 
   /* --- Завершённые --- */
   const [doneSelected, setDoneSelected] = useState<number[]>([]);
@@ -184,13 +188,39 @@ const FbsShippingPage = () => {
     toast({ title: "УПД сформирован", description: "xml-файл скачан, товар отмечен ярлыком «УПД»." });
   };
 
+  /* короба и ячейки хранения по товару (данные из Стока) */
+  const cellsOfShk = (shk: string) => boxes.filter((b) => b.items.some((i) => i.shk === shk));
+
+  const handleUplScan = (raw?: string) => {
+    const code = (raw ?? uplValue).trim();
+    if (!code) return;
+    const box = findBoxByBarcode(code);
+    setUplBox(box ?? null);
+    if (!box) {
+      toast({ title: "УПЛ не найден", description: code, variant: "destructive" });
+      return;
+    }
+    toast({ title: `УПЛ ${box.uplNumber}`, description: `Ячейка хранения ${box.cell || "не назначена"}` });
+  };
+
+  const emulateUplScan = () => {
+    const shks = supplyOrders.map((o) => o.shk);
+    const box = boxes.find((b) => b.items.some((i) => shks.includes(i.shk))) ?? boxes[0];
+    if (!box) {
+      toast({ title: "Коробов нет", description: "В Стоке нет коробов с УПЛ.", variant: "destructive" });
+      return;
+    }
+    setUplValue(box.uplBarcode);
+    handleUplScan(box.uplBarcode);
+  };
+
   const toggle = (arr: number[], set: (v: number[]) => void, id: number) =>
     set(arr.includes(id) ? arr.filter((x) => x !== id) : [...arr, id]);
 
   return (
     <div className="flex flex-col h-full">
       <PageHeader
-        title="Отгрузка FBS"
+        title="Работа с FBS WB"
         description="Новое → В сборке → В доставке → Завершённые. Обмен с WB по API."
         actions={
           <Button size="sm" onClick={() => { const n = syncFbsNew(); toast({ title: "Список обновлён по API WB", description: `Новых сборочных заданий: ${n}` }); }}>
@@ -519,8 +549,33 @@ const FbsShippingPage = () => {
                 </Button>
               </div>
 
-              <div className="space-y-2">
-                <Label>Добавить КИЗ в поставку</Label>
+              <div className="space-y-2 rounded border border-border p-3">
+                <Label>Скан УПЛ (поиск короба и ячейки хранения)</Label>
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="ШК УПЛ или номер УПЛ"
+                    value={uplValue}
+                    onChange={(e) => setUplValue(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleUplScan()}
+                  />
+                  <Button onClick={() => handleUplScan()}><ScanLine className="w-4 h-4 mr-2" /> Найти короб</Button>
+                  <Button variant="outline" onClick={emulateUplScan}>Эмулировать скан УПЛ</Button>
+                </div>
+                {uplBox && (
+                  <div className="text-xs space-y-1">
+                    <div>
+                      Короб <b>{uplBox.uplNumber}</b> · ячейка{" "}
+                      <b className="font-mono">{uplBox.cell || "не назначена"}</b> · заказ {uplBox.orderNumber}
+                    </div>
+                    <div className="text-muted-foreground">
+                      {uplBox.items.map((i) => `${i.article} · ${i.size} — ${i.qty} шт`).join(" | ")}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-2 rounded border border-border p-3">
+                <Label>Скан КИЗ товара</Label>
                 <div className="flex gap-2">
                   <Input
                     placeholder="Сканируйте КИЗ товара"
@@ -548,6 +603,7 @@ const FbsShippingPage = () => {
                     <th className="text-left px-3 py-2">Задание</th>
                     <th className="text-left px-3 py-2">Товар</th>
                     <th className="text-left px-3 py-2">Баркод</th>
+                    <th className="text-left px-3 py-2">Ячейки хранения (короба)</th>
                     <th className="text-left px-3 py-2">КИЗ</th>
                     <th className="text-left px-3 py-2">Стикер WB</th>
                     <th className="px-3 py-2"></th>
@@ -558,7 +614,22 @@ const FbsShippingPage = () => {
                     <tr key={o.id} className="border-t border-border">
                       <td className="px-3 py-2 font-mono text-xs">{o.orderNo}</td>
                       <td className="px-3 py-2 text-xs">{o.article} · {o.size}</td>
-                      <td className="px-3 py-2 font-mono text-xs">{o.shk}</td>
+                      <td className="px-3 py-2 text-xs">
+                        {cellsOfShk(o.shk).length ? (
+                          <div className="space-y-0.5">
+                            {cellsOfShk(o.shk).map((b) => (
+                              <div key={b.id} className="font-mono text-[11px]">
+                                {b.cell || "без ячейки"}{" "}
+                                <span className="text-muted-foreground">
+                                  · {b.uplNumber} · {b.items.filter((i) => i.shk === o.shk).reduce((s2, i) => s2 + i.qty, 0)} шт
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground">нет коробов</span>
+                        )}
+                      </td>
                       <td className="px-3 py-2 font-mono text-[10px] text-muted-foreground">{o.kiz ?? "—"}</td>
                       <td className="px-3 py-2">
                         <StatusBadge status={o.stickerPrinted ? "success" : "default"} label={o.stickerPrinted ? "Напечатан" : "Нет"} />
@@ -574,7 +645,7 @@ const FbsShippingPage = () => {
                     </tr>
                   ))}
                   {!supplyOrders.length && (
-                    <tr><td colSpan={6} className="px-3 py-8 text-center text-muted-foreground">В поставке нет заданий</td></tr>
+                    <tr><td colSpan={7} className="px-3 py-8 text-center text-muted-foreground">В поставке нет заданий</td></tr>
                   )}
                 </tbody>
               </table>
