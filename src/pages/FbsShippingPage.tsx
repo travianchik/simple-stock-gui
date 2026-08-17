@@ -46,6 +46,11 @@ const FbsShippingPage = () => {
   const [supplyWarehouse, setSupplyWarehouse] = useState<string>(wbWarehouses[0].name);
   const [createOpen, setCreateOpen] = useState(false);
 
+  /* --- Получение новых заданий с WB --- */
+  const [fetchOpen, setFetchOpen] = useState(false);
+  const [fetchFrom, setFetchFrom] = useState("");
+  const [fetchTo, setFetchTo] = useState("");
+
   /* --- В сборке --- */
   const [openSupply, setOpenSupply] = useState<Supply | null>(null);
   const [kizValue, setKizValue] = useState("");
@@ -250,7 +255,7 @@ const FbsShippingPage = () => {
         title="Работа с FBS WB"
         description="Новое → В сборке → В доставке → Завершённые. Обмен с WB по API."
         actions={
-          <Button size="sm" onClick={() => { const n = syncFbsNew(); toast({ title: "Список обновлён по API WB", description: `Новых сборочных заданий: ${n}` }); }}>
+          <Button size="sm" onClick={() => setFetchOpen(true)}>
             <RefreshCw className="w-4 h-4 mr-2" /> Получить новые задания
           </Button>
         }
@@ -687,6 +692,45 @@ const FbsShippingPage = () => {
               </table>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Диалог получения новых заданий с WB */}
+      <Dialog open={fetchOpen} onOpenChange={setFetchOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Получить новые задания с WB</DialogTitle>
+            <DialogDescription>Укажите период, за который нужно выгрузить сборочные задания.</DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-2 gap-4 py-2">
+            <div className="space-y-1">
+              <Label className="text-xs">Дата с</Label>
+              <Input type="date" value={fetchFrom} onChange={(e) => setFetchFrom(e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Дата по</Label>
+              <Input type="date" value={fetchTo} onChange={(e) => setFetchTo(e.target.value)} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setFetchOpen(false)}>Отмена</Button>
+            <Button
+              disabled={!fetchFrom || !fetchTo}
+              onClick={() => {
+                const n = syncFbsNew(fetchFrom, fetchTo);
+                if (n === 0) {
+                  toast({ title: "Ошибка периода", description: "Проверьте даты и повторите попытку.", variant: "destructive" });
+                } else {
+                  toast({ title: "Список обновлён по API WB", description: `Новых сборочных заданий: ${n}` });
+                }
+                setFetchOpen(false);
+                setFetchFrom("");
+                setFetchTo("");
+              }}
+            >
+              <RefreshCw className="w-4 h-4 mr-2" /> Выгрузить задания
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

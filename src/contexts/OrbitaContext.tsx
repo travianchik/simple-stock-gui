@@ -260,7 +260,7 @@ interface OrbitaContextType {
   /* FBS */
   fbsOrders: FbsOrder[];
   supplies: Supply[];
-  syncFbsNew: () => number;
+  syncFbsNew: (dateFrom: string, dateTo: string) => number;
   createSupply: (orderIds: number[], warehouse: string) => Supply | null;
   addTrbx: (supplyId: number) => void;
   attachKiz: (supplyId: number, kiz: string) => { ok: boolean; message: string };
@@ -473,15 +473,33 @@ export const OrbitaProvider = ({ children }: { children: ReactNode }) => {
   };
 
   /* ---- FBS ---- */
-  const syncFbsNew = () => {
+  const randomDateInRange = (from: string, to: string) => {
+    const start = new Date(from).getTime();
+    const end = new Date(to).getTime();
+    const ts = start + Math.random() * (end - start);
+    const d = new Date(ts);
+    const dd = String(d.getDate()).padStart(2, "0");
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const yy = d.getFullYear();
+    const hh = String(d.getHours()).padStart(2, "0");
+    const min = String(d.getMinutes()).padStart(2, "0");
+    return `${dd}.${mm}.${yy} ${hh}:${min}`;
+  };
+
+  const syncFbsNew = (dateFrom: string, dateTo: string) => {
+    const start = new Date(dateFrom).getTime();
+    const end = new Date(dateTo).getTime();
+    if (!dateFrom || !dateTo || isNaN(start) || isNaN(end) || end < start) return 0;
     const base = fbsOrders.length;
     const pool = stock.length ? stock : initialStock;
-    const created: FbsOrder[] = Array.from({ length: 3 }).map((_, k) => {
+    const days = Math.max(1, Math.ceil((end - start) / (1000 * 60 * 60 * 24)));
+    const count = Math.min(15, Math.max(3, days * 2));
+    const created: FbsOrder[] = Array.from({ length: count }).map((_, k) => {
       const src = pool[(base + k) % pool.length];
       return {
         id: Date.now() + k,
         orderNo: String(5488423000 + base + k),
-        createdAt: nowRu(),
+        createdAt: randomDateInRange(dateFrom, dateTo),
         article: src.article,
         size: src.size,
         name: src.name,
