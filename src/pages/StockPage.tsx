@@ -196,14 +196,7 @@ const StockPage = () => {
       />
 
       <div className="flex-1 overflow-auto p-6">
-        <Tabs defaultValue="stock">
-          <TabsList>
-            <TabsTrigger value="stock">Остатки</TabsTrigger>
-            <TabsTrigger value="boxes">Короба / УПЛ</TabsTrigger>
-          </TabsList>
-
-          {/* ============ ОСТАТКИ ============ */}
-          <TabsContent value="stock" className="mt-4 space-y-4">
+        <div className="space-y-4">
             <div className="flex flex-wrap items-center gap-2">
               <div className="relative w-72">
                 <Search className="absolute left-2.5 top-2.5 w-4 h-4 text-muted-foreground" />
