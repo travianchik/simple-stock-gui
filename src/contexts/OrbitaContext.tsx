@@ -189,6 +189,7 @@ const initialBoxes: UplBox[] = [
     closed: true,
     closedAt: "14.08.2026 10:35",
     cell: "A1.02.3.01",
+    warehouse: wbWarehouses[0].name,
     items: [
       { article: "FAPPE/БРАЗ_КРУЖК/466С", size: "M", name: "Комплект трусов женских FAPPE/БРАЗ_КРУЖК/466С", shk: "2041941632583", qty: 3, kizes: [kiz(1), kiz(2), kiz(3)] },
       { article: "FAPPE/БРАЗ_КРУЖК/466С", size: "S", name: "Комплект трусов женских FAPPE/БРАЗ_КРУЖК/466С", shk: "2041941632590", qty: 2, kizes: [kiz(4), kiz(5)] },
@@ -203,6 +204,7 @@ const initialBoxes: UplBox[] = [
     closed: true,
     closedAt: "14.08.2026 11:02",
     cell: "A1.02.3.02",
+    warehouse: wbWarehouses[0].name,
     items: [
       { article: "FAPPE/БРАЗ_КРУЖК/466С", size: "M", name: "Комплект трусов женских FAPPE/БРАЗ_КРУЖК/466С", shk: "2041941632583", qty: 4, kizes: [kiz(6), kiz(7), kiz(8), kiz(9)] },
       { article: "FAPPE/БРАЗ_КРУЖК/4К66", size: "XS", name: "Комплект трусов женских FAPPE/БРАЗ_КРУЖК/4К66", shk: "4610547700989", qty: 2, kizes: [kiz(10), kiz(11)] },
@@ -216,6 +218,7 @@ const initialBoxes: UplBox[] = [
     orderNumber: "ЗАК-0232",
     closed: false,
     cell: "B2.01.1.05",
+    warehouse: wbWarehouses[1].name,
     items: [
       { article: "FAPPE/БРАЗ_КРУЖК/4444", size: "S", name: "Комплект трусов женских FAPPE/БРАЗ_КРУЖК/4444", shk: "4610478702816", qty: 5, kizes: [] },
       { article: "LILAC/СЛИПЫ-ЦВЕТОК/ОПРСЛ46", size: "M", name: "Трусы женские бесшовные слипы набор 7 шт MY LILAC", shk: "4660546067552", qty: 1, kizes: [kiz(12)] },
@@ -366,6 +369,7 @@ export const OrbitaProvider = ({ children }: { children: ReactNode }) => {
       orderId,
       orderNumber: order?.number ?? "",
       closed: false,
+      warehouse: wbWarehouses[0].name,
       items: [],
     };
     setBoxes((prev) => [box, ...prev]);
@@ -521,10 +525,22 @@ export const OrbitaProvider = ({ children }: { children: ReactNode }) => {
   const attachKiz: OrbitaContextType["attachKiz"] = (supplyId, kiz) => {
     const code = kiz.trim();
     if (!code) return { ok: false, message: "Пустой КИЗ" };
+    const supply = supplies.find((s) => s.id === supplyId);
     const target = fbsOrders.find(
       (o) => o.supplyId === supplyId && !o.kiz && (code.includes(o.shk) || code.includes(o.article) || code === o.shk)
     );
     if (!target) return { ok: false, message: "Товар по КИЗу не найден в поставке (нет совпадения по ШК/артикулу/размеру)" };
+    /* запрет сборки из разных складов: товар должен лежать в коробе того же склада, что и поставка */
+    if (supply) {
+      const withShk = boxes.filter((b) => b.items.some((i) => i.shk === target.shk));
+      if (withShk.length && !withShk.some((b) => (b.warehouse ?? supply.warehouse) === supply.warehouse)) {
+        const other = withShk.map((b) => b.warehouse).filter(Boolean).join(", ");
+        return {
+          ok: false,
+          message: `Товар хранится на другом складе (${other}). Поставка собирается только по складу «${supply.warehouse}».`,
+        };
+      }
+    }
     setFbsOrders((prev) => prev.map((o) => (o.id === target.id ? { ...o, kiz: code } : o)));
     return { ok: true, message: `КИЗ привязан: ${target.article} · ${target.size} · задание ${target.orderNo}` };
   };
