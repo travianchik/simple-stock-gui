@@ -57,6 +57,7 @@ export interface UplBox {
   orderNumber: string;
   closed: boolean;
   closedAt?: string;
+  cell?: string;       // ячейка хранения: стеллаж.секция.этаж.короб
   items: UplBoxItem[];
 }
 
@@ -285,6 +286,7 @@ export const OrbitaProvider = ({ children }: { children: ReactNode }) => {
       orderId,
       orderNumber: order?.number ?? "",
       closed: false,
+      cell: `${((n - 1) % 12) + 1}.${((n * 3) % 8) + 1}.${((n * 5) % 4) + 1}.${((n * 7) % 20) + 1}`,
       items: [],
     };
     setBoxes((prev) => [box, ...prev]);
