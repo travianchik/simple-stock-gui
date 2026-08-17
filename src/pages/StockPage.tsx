@@ -248,12 +248,22 @@ const StockPage = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((r) => (
+                  {rows.map((r) => {
+                    const rowBoxes = boxesOfShk(r.shk);
+                    const isOpen = expanded === r.id;
+                    return (
+                    <>
                     <tr
                       key={r.id}
-                      className={`border-t border-border ${r.deficit > 0 ? "bg-destructive/10" : "hover:bg-muted/30"}`}
+                      onClick={() => setExpanded(isOpen ? null : r.id)}
+                      className={`border-t border-border cursor-pointer ${r.deficit > 0 ? "bg-destructive/10" : "hover:bg-muted/30"}`}
                     >
-                      <td className="px-3 py-2">{r.size}</td>
+                      <td className="px-3 py-2">
+                        <span className="flex items-center gap-1">
+                          {isOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                          {r.size}
+                        </span>
+                      </td>
                       <td className="px-3 py-2 font-medium">{r.article}</td>
                       <td className="px-3 py-2 font-mono text-xs">{r.shk}</td>
                       <td className="px-3 py-2 font-mono text-xs text-muted-foreground">{r.gtin || "—"}</td>
@@ -268,7 +278,64 @@ const StockPage = () => {
                       <td className="px-3 py-2 text-right text-destructive">{r.deficit || "—"}</td>
                       <td className="px-3 py-2 text-right">{r.surplus || "—"}</td>
                     </tr>
-                  ))}
+                    {isOpen && (
+                      <tr key={`${r.id}-boxes`} className="border-t border-border bg-muted/20">
+                        <td colSpan={14} className="px-6 py-3">
+                          {rowBoxes.length ? (
+                            <div className="space-y-2">
+                              <div className="text-xs uppercase tracking-wider text-muted-foreground">
+                                Короба с этим товаром и ячейки хранения
+                              </div>
+                              <table className="w-full text-sm border border-border rounded bg-card">
+                                <thead className="bg-muted/50 text-xs uppercase text-muted-foreground">
+                                  <tr>
+                                    <th className="text-left px-3 py-2">УПЛ</th>
+                                    <th className="text-left px-3 py-2">ШК УПЛ</th>
+                                    <th className="text-left px-3 py-2">Ячейка</th>
+                                    <th className="text-left px-3 py-2">Заказ приёмки</th>
+                                    <th className="text-right px-3 py-2">Кол-во в коробе</th>
+                                    <th className="text-left px-3 py-2">КИЗы</th>
+                                    <th className="text-left px-3 py-2">Статус</th>
+                                    <th className="px-3 py-2"></th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {rowBoxes.map((b) => {
+                                    const it = b.items.find((i) => i.shk === r.shk);
+                                    return (
+                                      <tr key={b.id} className="border-t border-border">
+                                        <td className="px-3 py-2 font-medium">{b.uplNumber}</td>
+                                        <td className="px-3 py-2 font-mono text-xs">{b.uplBarcode}</td>
+                                        <td className="px-3 py-2 font-mono text-xs">{b.cell || "не размещён"}</td>
+                                        <td className="px-3 py-2">{b.orderNumber}</td>
+                                        <td className="px-3 py-2 text-right">{it?.qty ?? 0}</td>
+                                        <td className="px-3 py-2 text-[11px] font-mono text-muted-foreground max-w-[240px] truncate">
+                                          {it?.kizes.length ? it.kizes.join(", ") : "—"}
+                                        </td>
+                                        <td className="px-3 py-2">
+                                          <StatusBadge status={b.closed ? "success" : "warning"} label={b.closed ? "Закрыт" : "Открыт"} />
+                                        </td>
+                                        <td className="px-3 py-2 text-right">
+                                          <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setBoxDialog(b); }}>
+                                            <Boxes className="w-4 h-4 mr-1" /> Наполнение
+                                          </Button>
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                            </div>
+                          ) : (
+                            <div className="text-sm text-muted-foreground">
+                              По этой позиции нет коробов с ячейкой хранения — они появятся после приёмки товара.
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    )}
+                    </>
+                  );})}
                   {!rows.length && (
                     <tr>
                       <td colSpan={14} className="px-3 py-10 text-center text-muted-foreground">
@@ -285,58 +352,7 @@ const StockPage = () => {
               отрицательном значении «Доступно» (строка подсвечена) · Излишек дублирует «Доступно». На маркетплейс
               передаётся столбец «Доступно».
             </p>
-          </TabsContent>
-
-          {/* ============ КОРОБА / УПЛ ============ */}
-          <TabsContent value="boxes" className="mt-4 space-y-4">
-            <div className="flex items-center gap-2">
-              <Button size="sm" variant="outline" onClick={() => { setScanOpen(true); setScanCode(""); setFoundBox(null); }}>
-                <ScanLine className="w-4 h-4 mr-2" /> Сканировать ШК УПЛ
-              </Button>
-              <span className="text-xs text-muted-foreground">Коробов всего: {boxes.length}</span>
-            </div>
-
-            <div className="border border-border rounded-lg overflow-hidden bg-card">
-              <table className="w-full text-sm">
-                <thead className="bg-muted/50 text-xs uppercase text-muted-foreground">
-                  <tr>
-                    <th className="text-left px-3 py-2.5">УПЛ</th>
-                    <th className="text-left px-3 py-2.5">ШК УПЛ</th>
-                    <th className="text-left px-3 py-2.5">Заказ</th>
-                    <th className="text-right px-3 py-2.5">Кол-во в коробе</th>
-                    <th className="text-left px-3 py-2.5">Статус</th>
-                    <th className="px-3 py-2.5"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {boxes.map((b) => (
-                    <tr key={b.id} className="border-t border-border hover:bg-muted/30">
-                      <td className="px-3 py-2 font-medium">{b.uplNumber}</td>
-                      <td className="px-3 py-2 font-mono text-xs">{b.uplBarcode}</td>
-                      <td className="px-3 py-2">{b.orderNumber}</td>
-                      <td className="px-3 py-2 text-right">{b.items.reduce((s, i) => s + i.qty, 0)}</td>
-                      <td className="px-3 py-2">
-                        <StatusBadge status={b.closed ? "success" : "warning"} label={b.closed ? "Закрыт" : "Открыт"} />
-                      </td>
-                      <td className="px-3 py-2 text-right">
-                        <Button size="sm" variant="ghost" onClick={() => setBoxDialog(b)}>
-                          <Boxes className="w-4 h-4 mr-1" /> Наполнение
-                        </Button>
-                      </td>
-                    </tr>
-                  ))}
-                  {!boxes.length && (
-                    <tr>
-                      <td colSpan={6} className="px-3 py-10 text-center text-muted-foreground">
-                        Коробов пока нет — они появятся после приёмки товара.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </TabsContent>
-        </Tabs>
+        </div>
       </div>
 
       {/* Диалог сканирования УПЛ */}
